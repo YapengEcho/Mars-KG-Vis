@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+*.log
+
+# Node / Vue
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Data & models (keep scripts and small samples, not dumps)
+data/raw/*
+!data/raw/sample/
+!data/raw/sample/.gitkeep
+data/processed/*
+!data/processed/graph_fallback.json
+data/neo4j/import/*.csv
+ai/chroma/
+*.sqlite3
+*.db
+*.joblib
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+docker-data/
+
+# Secrets
+*.pem
+credentials.json
+dashscope.key
+
+# Course PDFs (local only, watermarked slides)
+Python*.pdf

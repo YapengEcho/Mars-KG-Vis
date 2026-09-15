@@ -1,0 +1,23 @@
+{
+  "degraded": true,
+  "nodes": [
+    {"id": "ls_0001", "label": "示例滑坡 A", "kind": "Landslide"},
+    {"id": "type_slump", "label": "slump", "kind": "LandslideType"},
+    {"id": "type_fall", "label": "fall", "kind": "LandslideType"},
+    {"id": "mission_mro", "label": "MRO", "kind": "Mission"},
+    {"id": "region_north", "label": "北半球中纬", "kind": "Region"},
+    {"id": "feat_crater", "label": "crater wall", "kind": "Feature"},
+    {"id": "ls_0002", "label": "示例滑坡 B", "kind": "Landslide"},
+    {"id": "ls_0003", "label": "示例滑坡 C", "kind": "Landslide"}
+  ],
+  "edges": [
+    {"source": "ls_0001", "target": "type_slump", "rel": "IS_TYPE"},
+    {"source": "ls_0001", "target": "mission_mro", "rel": "OBSERVED_BY"},
+    {"source": "ls_0001", "target": "region_north", "rel": "LOCATED_IN"},
+    {"source": "ls_0001", "target": "feat_crater", "rel": "HAS_FEATURE"},
+    {"source": "ls_0001", "target": "ls_0002", "rel": "SIMILAR_TO"},
+    {"source": "ls_0002", "target": "type_slump", "rel": "IS_TYPE"},
+    {"source": "ls_0003", "target": "type_fall", "rel": "IS_TYPE"},
+    {"source": "ls_0003", "target": "mission_mro", "rel": "OBSERVED_BY"}
+  ]
+}

@@ -1,0 +1,27 @@
+[
+  {
+    "id": "q1",
+    "question": "火星上主要有哪些类型的滑坡？",
+    "expect": "提到至少两种类型，如 slump / fall / flow"
+  },
+  {
+    "id": "q2",
+    "question": "HiRISE 或 MRO 和滑坡观测有什么关系？",
+    "expect": "提到探测任务与影像编目"
+  },
+  {
+    "id": "q3",
+    "question": "崩塌（fall）和滑塌（slump）有什么区别？",
+    "expect": "对比运动方式或形态"
+  },
+  {
+    "id": "q4",
+    "question": "哪些区域滑坡比较集中？",
+    "expect": "能引用编目中的纬度带或命名区"
+  },
+  {
+    "id": "q5",
+    "question": "给定一条滑坡，系统如何做相似推荐？",
+    "expect": "提到特征或图谱 SIMILAR_TO"
+  }
+]
