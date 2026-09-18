@@ -29,12 +29,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 基础设施
 docker compose up -d mysql neo4j redis
 
-# 后端
+# 后端（仓库根目录已有 .venv；默认 SQLite，.env 里 DJANGO_DB_ENGINE=mysql 可切库）
+.venv/Scripts/activate          # Windows Git Bash
+pip install -r backend/requirements.txt
 cd backend
-python -m venv .venv
-source .venv/Scripts/activate   # Windows Git Bash
-pip install -r requirements.txt
 python manage.py migrate
+python manage.py seed_landslides
 python manage.py runserver
 
 # 前端
