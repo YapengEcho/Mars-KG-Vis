@@ -62,12 +62,20 @@ docs/        立项、架构、接口、Git、报告大纲
 - [数据源与图谱草案](docs/05-数据源与知识图谱草案.md)
 - [项目报告大纲](docs/06-项目报告大纲.md)
 
-## 本地启动（骨架落地后）
+## 本地启动
+
+本机 3306 若已被占用，后端默认 SQLite（`.env` 中 `DJANGO_DB_ENGINE=sqlite`）。Docker 镜像能拉下来后再起 MySQL / Redis / Neo4j。
 
 ```bash
-docker compose up -d mysql neo4j redis
-cd backend && python manage.py runserver
-cd frontend && npm run dev
+.venv/Scripts/activate
+pip install -r backend/requirements.txt
+cd backend
+python manage.py migrate
+python manage.py seed_landslides
+python manage.py runserver
 ```
+
+列表：http://127.0.0.1:8000/api/landslides/  
+详情：http://127.0.0.1:8000/api/landslides/ls_0001/
 
 密钥放 `.env`，不要提交。演示前确认：大屏、图谱、预测或推荐、智能体问答、至少一条语音或手势指令。
