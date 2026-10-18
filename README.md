@@ -1,81 +1,93 @@
-# 火星滑坡分类知识图谱与可视化系统
+# Mars-KG-Vis
 
-成都理工大学《Python程序设计》课程项目。前后端分离，面向火星滑坡编目数据：采集清洗、知识图谱、可视化大屏、类型预测与相似推荐、RAG 智能体，并在 PC / 移动端提供语音与手势交互。
+火星滑坡探索移动端，支持火星球浏览、目录查询、类型图鉴与点位收藏。
 
+## 当前功能
 
-## 成员
+- 火星球旋转、缩放、点位选择与定位；无法显示三维时切换为坐标示意。
+- 按编号、名称和类型查询，查看点位详情。
+- SL、SP、FL、CL 四类目录与案例入口。
+- 本机收藏与回访。
+- 单图分类上传页面及服务状态检查。
 
-| 成员 | 角色 | 负责 |
-| --- | --- | --- |
-| 崔亚鹏 | 组长 / 后端 | 进度、Git/PR、Django 接口、MySQL、Redis |
-| 滕佳杰 | 数据与图谱 | 采集清洗、特征、Neo4j、双库入库 |
-| 梁先楷 | 前端与交互 | Vue 大屏、PC/移动适配、语音、手势 |
-| 周璇 | 算法与交付 | 预测/推荐、RAG、测试、报告、视频脚本 |
+默认附带20条虚构示例记录，球面纹理为程序生成的示意图。分类模型、大图检测和资料问答尚未接入，不返回模拟预测。
 
-## 技术栈（已冻结）
+## 技术栈
 
-| 层 | 选型 |
-| --- | --- |
-| 前端 | Vue 3 + Vite + Element Plus + ECharts + Leaflet（火星底图）+ Three.js（首页星球） |
-| 移动端 | 同一套 Vue 响应式，不做原生 App |
-| 后端 | Django + Django REST Framework |
-| 业务库 | MySQL 8 |
-| 图数据库 | Neo4j Community（Docker） |
-| 向量库 | Chroma（本地目录） |
-| RAG | LangChain + 通义千问 |
-| 预测/推荐 | scikit-learn |
-| 缓存 | Redis |
-| 语音 | Web Speech API（讯飞为备选） |
-| 手势 | MediaPipe Hands（仅 PC） |
-| 协作 | GitHub + PR |
+移动端使用 Vue 3、TypeScript、Vite、Three.js 和 Capacitor；API 使用 FastAPI。
 
-决策理由与砍掉的范围见 [docs/01-评估与技术决策.md](docs/01-评估与技术决策.md)。
+## 本地运行
 
-## 仓库结构
-
-```
-backend/     Django API
-frontend/    Vue 大屏
-data/        采集、清洗、图谱 schema
-ai/          预测、推荐、RAG
-docs/        立项、架构、接口、Git、报告大纲
-```
-
-## 课程要求对齐
-
-必须能演示完整链路：
-
-1. 互联网获取数据（公开目录下载 + 至少一条真实爬虫）
-2. 清洗、处理、挖掘
-3. 数据库存储（MySQL + Neo4j）
-4. 终端可视化，并且包含**预测**和**推荐**
-
-加分项：Vue / Django / Redis / AI、国产模型（通义千问）、Git、代码优化、AI 协助开发、AI 功能模块。这些都要写进项目报告。
-
-## 文档
-
-- [分工](分工.md)
-- [评估与技术决策](docs/01-评估与技术决策.md)
-- [系统架构](docs/02-系统架构.md)
-- [里程碑与接口](docs/03-里程碑与接口约定.md)
-- [Git 协作规范](docs/04-Git协作规范.md)
-- [数据源与图谱草案](docs/05-数据源与知识图谱草案.md)
-- [项目报告大纲](docs/06-项目报告大纲.md)
-
-## 本地启动
-
-本机 3306 若已被占用，后端默认 SQLite（`.env` 中 `DJANGO_DB_ENGINE=sqlite`）。Docker 镜像能拉下来后再起 MySQL / Redis / Neo4j。
+需要 Node.js 22.12+、Python 3.11+。
 
 ```bash
-.venv/Scripts/activate
-pip install -r backend/requirements.txt
-cd backend
-python manage.py migrate
-python manage.py seed_landslides
-python manage.py runserver
+cd mobile
+npm ci
+npm run dev
 ```
 
-列表：http://127.0.0.1:8000/api/landslides/  
-详情：http://127.0.0.1:8000/api/landslides/ls_0001/
+浏览器打开 `http://localhost:5173`。默认目录和收藏无需后端或在线地图服务。
 
-密钥放 `.env`，不要提交。演示前确认：大屏、图谱、预测或推荐、智能体问答、至少一条语音或手势指令。
+如需联调API，在仓库根目录运行：
+
+```bash
+python -m pip install -r api/requirements.txt
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+
+将 `mobile/.env.example` 复制为 `mobile/.env.local`，设置：
+
+```dotenv
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+重启前端后从API读取目录。原生APP连接远端服务时使用HTTPS；手机上的127.0.0.1指向手机自身。
+
+## Android
+
+Android工程位于 `mobile/android/`。需要 JDK 21、Android SDK 36及对应构建工具。
+
+```bash
+cd mobile
+npm run android:sync
+npm run android:open
+```
+
+在Android Studio中运行到手机，或使用Gradle构建调试安装包：
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
+Windows使用 `gradlew.bat assembleDebug`。输出位于 `app/build/outputs/apk/debug/`。
+
+也可在GitHub Actions中手动运行 `Android debug build`，完成后下载 `mars-atlas-debug` 安装包产物。
+
+## 检查
+
+```bash
+cd mobile
+npm test
+npm run build
+```
+
+API测试在仓库根目录运行：
+
+```bash
+python -m pip install -r api/requirements-dev.txt
+python -m pytest api/tests -q
+```
+
+## 目录
+
+```text
+mobile/                  移动端页面、组件与Android工程
+api/                     目录接口与模型服务入口
+examples/                公开演示目录
+contracts/               数据格式与接口说明
+scripts/                 本地目录转换工具
+.github/workflows/       构建与接口检查
+```
+
+真实目录按 [数据格式](contracts/catalog.md) 接入，不与示例记录混用。研究影像、人工标注、模型权重与访问凭据不包含在此仓库中。

@@ -19,9 +19,7 @@ data/raw/*
 !data/raw/sample/
 !data/raw/sample/.gitkeep
 data/processed/*
-!data/processed/graph_fallback.json
 data/neo4j/import/*.csv
-ai/chroma/
 *.sqlite3
 *.db
 *.joblib
@@ -32,9 +30,6 @@ ai/chroma/
 .DS_Store
 Thumbs.db
 
-# Docker volumes
-docker-data/
-
 # Secrets
 *.pem
 credentials.json
@@ -42,3 +37,53 @@ dashscope.key
 
 # Course PDFs (local only, watermarked slides)
 Python*.pdf
+
+# Model & feature artifacts (reports/scripts stay tracked, large binaries do not)
+*.pt
+runs/**/*.npz
+runs/**/*.cache
+
+# Local cloud-upload and browser automation scratch (never project artifacts)
+cloud_*.tar.gz
+cloud_parts/
+cloud_parts8/
+cloud_round2_parts8/
+chenyu_*.js
+chenyu_chunks/
+tmp_jupyter_*.py
+tmp_upload_*.py
+tmp_split_bundle.py
+data/scripts/_tmp_*.py
+runs/pytest_tmp*/
+
+# Local historical assets and cleanup inventories
+data/archive/
+runs/archive/
+runs/maintenance/**/inventory*.json
+
+# Mobile builds and local catalogs
+mobile/dist/
+mobile/.vite/
+mobile/.npm-cache/
+mobile/.devlogs/
+mobile/coverage/
+mobile/public/data/*.local.json
+mobile/android/.gradle/
+mobile/android/.idea/
+mobile/android/local.properties
+mobile/android/**/build/
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor*.json
+mobile/android/capacitor-cordova-android-plugins/
+mobile/android/app/capacitor.build.gradle
+mobile/android/capacitor.settings.gradle
+*.keystore
+*.jks
+api/.venv/
+api/.pytest_cache/
+
+# Research artifacts remain local to the model workspace
+/runs/
+/weights/
+/output/
+/tmp/
