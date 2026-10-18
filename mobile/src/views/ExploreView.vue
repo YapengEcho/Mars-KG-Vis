@@ -38,13 +38,9 @@ function reset() {
   <section class="explore-view">
     <div class="explore-heading">
       <div>
-        <span class="eyebrow">A DIFFERENT PERSPECTIVE</span>
-        <h1>从轨道，认识火星<span>。</span></h1>
-        <p>探索地表的痕迹，记录每一次发现。</p>
-      </div>
-      <div class="orbit-counter">
-        <strong>{{ atlas.state.catalog.records.length.toString().padStart(2, '0') }}</strong
-        ><span>{{ atlas.state.catalog.mode === 'demo' ? '示例点位' : '目录记录' }}</span>
+        <span class="eyebrow">MARS LANDSLIDES</span>
+        <h1>探索火星滑坡</h1>
+        <p>浏览滑坡分布、类型与案例。</p>
       </div>
     </div>
     <div class="search-box">
@@ -54,8 +50,8 @@ function reset() {
         placeholder="搜索编号、名称或类型"
         inputmode="search"
       /><button v-if="query" class="icon-button" aria-label="清除搜索" @click="query = ''">
-        <X :size="16" /></button
-      ><kbd>/</kbd>
+        <X :size="16" />
+      </button>
     </div>
     <div class="type-filters" role="group" aria-label="类型筛选">
       <button :class="{ active: !type }" :aria-pressed="!type" @click="type = ''">全部</button
@@ -91,9 +87,9 @@ function reset() {
     <section class="discovery-section">
       <div class="section-heading">
         <div>
-          <span class="eyebrow">ON THE SURFACE</span>
+          <span class="eyebrow">LANDSLIDE CATALOG</span>
           <h2>
-            {{ query || type ? '匹配的点位' : '从一个点位开始' }} <span>{{ matches.length }}</span>
+            {{ query || type ? '查询结果' : '滑坡目录' }} <span>{{ matches.length }}</span>
           </h2>
         </div>
         <RouterLink to="/atlas">查看目录 <ArrowRight :size="16" /></RouterLink>

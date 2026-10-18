@@ -15,19 +15,10 @@ onMounted(() => atlas.load())
   <div class="app-shell">
     <header class="app-header">
       <RouterLink to="/" class="brand" aria-label="Mars Atlas 首页"
-        ><span class="brand-orbit"></span
+        ><span class="brand-mark"></span
         ><span
           >MARS<span class="brand-light"> ATLAS</span><small>火星滑坡探索</small></span
         ></RouterLink
-      ><span class="mode-pill"
-        ><span></span
-        >{{
-          atlas.state.loading
-            ? '加载中'
-            : atlas.state.catalog.mode === 'demo'
-              ? '示例目录'
-              : '滑坡目录'
-        }}</span
       >
     </header>
     <div v-if="atlas.state.error || atlas.state.storageError" class="notice" role="status">

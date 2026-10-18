@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'io.marskgvis.atlas',
   appName: 'Mars Atlas',
   webDir: 'dist',
-  backgroundColor: '#101210',
-  android: { backgroundColor: '#101210' },
+  backgroundColor: '#0b1017',
+  android: { backgroundColor: '#0b1017' },
 }
 export default config

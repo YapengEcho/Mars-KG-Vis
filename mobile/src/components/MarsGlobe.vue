@@ -554,7 +554,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   outline: none;
 }
 .mars-globe:focus-visible {
-  outline: 2px solid var(--accent, #d6ac80);
+  outline: 2px solid var(--accent, #86b6ff);
   outline-offset: -3px;
   border-radius: 16px;
 }
@@ -573,7 +573,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   inset: 0;
   display: grid;
   place-items: center;
-  color: #c8b6a5;
+  color: #b7c6db;
   font-size: 12px;
   pointer-events: none;
 }
@@ -583,7 +583,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   bottom: 50px;
   right: 18px;
   pointer-events: none;
-  color: #cfbfae;
+  color: #c1ccdb;
   font-size: 10px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
@@ -597,7 +597,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
 }
 .globe-fallback > p {
   margin: 0 0 18px;
-  color: #baaa99;
+  color: #9ba9bd;
   font-size: 11px;
   line-height: 1.6;
   text-align: center;
@@ -606,12 +606,12 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   position: relative;
   width: 100%;
   aspect-ratio: 2;
-  border: 1px solid #796453;
+  border: 1px solid #425672;
   border-radius: 5px;
-  background-color: #342720;
+  background-color: #182333;
   background-image:
-    linear-gradient(#94725733 1px, transparent 1px),
-    linear-gradient(90deg, #94725733 1px, transparent 1px);
+    linear-gradient(#819cbe33 1px, transparent 1px),
+    linear-gradient(90deg, #819cbe33 1px, transparent 1px);
   background-size: 16.666% 25%;
 }
 .map-point {
@@ -619,14 +619,14 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   width: 9px;
   height: 9px;
   padding: 0;
-  border: 1px solid #1c1917;
+  border: 1px solid #101823;
   border-radius: 50%;
   transform: translate(-50%, -50%);
   cursor: pointer;
 }
 .map-point:focus-visible,
 .map-point.is-selected {
-  outline: 2px solid #fff0ca;
+  outline: 2px solid #d7e7ff;
   outline-offset: 3px;
   z-index: 1;
 }
@@ -635,7 +635,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
 .map-south {
   position: absolute;
   left: -29px;
-  color: #aa9784;
+  color: #9ba9bd;
   font-size: 9px;
   transform: translateY(-50%);
 }
@@ -652,7 +652,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   display: flex;
   justify-content: space-between;
   margin-top: 8px;
-  color: #aa9784;
+  color: #9ba9bd;
   font-size: 9px;
 }
 @media (max-width: 380px) {

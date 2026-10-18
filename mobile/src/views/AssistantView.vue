@@ -64,7 +64,7 @@ onBeforeUnmount(clear)
   <section class="content-view">
     <div class="page-heading">
       <span class="eyebrow">A CLOSER LOOK</span>
-      <h1>从一张影像，开始判断。</h1>
+      <h1>滑坡类型识别</h1>
       <p>上传已裁剪的单个滑坡图片，查看类型识别结果。</p>
     </div>
     <div class="service-status"><span :class="{ ready: available }"></span>{{ serviceText }}</div>

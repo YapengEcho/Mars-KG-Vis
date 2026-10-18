@@ -7,7 +7,7 @@ import { atlas } from '../stores/atlas'
   <section class="content-view">
     <div class="page-heading">
       <span class="eyebrow">YOUR COLLECTION</span>
-      <h1>为下一次探索留个坐标。</h1>
+      <h1>我的收藏</h1>
       <p>已收藏 {{ atlas.saved.value.length }} 个点位，仅保存在当前设备。</p>
     </div>
     <div v-if="atlas.saved.value.length" class="record-list">

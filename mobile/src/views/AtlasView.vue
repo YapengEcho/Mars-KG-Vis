@@ -15,7 +15,7 @@ const matches = computed(() => filterSlides(atlas.state.catalog.records, query.v
   <section class="content-view">
     <div class="page-heading">
       <span class="eyebrow">THE LANDSLIDE ATLAS</span>
-      <h1>看见不同的地表形态。</h1>
+      <h1>滑坡类型与目录</h1>
       <p>从四类目录出发，查找点位与案例。</p>
     </div>
     <div class="type-grid">

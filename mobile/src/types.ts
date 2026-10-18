@@ -26,25 +26,25 @@ export const typeInfo: Record<
   SL: {
     name: '滑移型',
     english: 'Sliding',
-    color: '#dcaa83',
+    color: '#ec9c79',
     note: '按原编目中的 SL 类别查看记录与案例。',
   },
   SP: {
     name: '滑塌型',
     english: 'Slumping',
-    color: '#9dbbb0',
+    color: '#78bed4',
     note: '按原编目中的 SP 类别查看记录与案例。',
   },
   FL: {
     name: '流动型',
     english: 'Flowing',
-    color: '#c4b7db',
+    color: '#b9a2e8',
     note: '按原编目中的 FL 类别查看记录与案例。',
   },
   CL: {
     name: '复合型',
     english: 'Composite',
-    color: '#d3bc76',
+    color: '#e1c574',
     note: '按原编目中的 CL 类别查看记录与案例。',
   },
 }
