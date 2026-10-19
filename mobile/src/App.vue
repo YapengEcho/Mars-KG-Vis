@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { Bookmark, Compass, Layers, ScanLine } from '@lucide/vue'
+import { Bookmark, Compass, Layers, ScanLine, Sparkles } from '@lucide/vue'
 import SlideDetail from './components/SlideDetail.vue'
 import { atlas } from './stores/atlas'
 const tabs = [
   { to: '/', label: '探索', icon: Compass },
   { to: '/atlas', label: '图鉴', icon: Layers },
-  { to: '/assistant', label: '助手', icon: ScanLine },
+  { to: '/recognize', label: '识别', icon: ScanLine },
+  { to: '/chat', label: '助手', icon: Sparkles },
   { to: '/saved', label: '收藏', icon: Bookmark },
 ]
 onMounted(() => atlas.load())

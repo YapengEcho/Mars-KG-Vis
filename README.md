@@ -55,6 +55,18 @@ python scripts/import_catalog_sqlite.py --input examples/catalog.demo.json --out
 
 设置`MARS_DB_PATH`为数据库绝对路径后启动API。原始真实目录导入后保持staging，坐标核准前不会作为正式目录发布。结构及约定见[数据库说明](contracts/database.md)和[识别接口约定](contracts/recognition.md)。识别HTTP入口目前仍返回503。
 
+## 智能助手（Agent）
+
+对话接口为 `POST /api/agent/chat`，默认未启用，需在服务端配置语言模型（凭据不进仓库）：
+
+```dotenv
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+DEEPSEEK_API_KEY=sk-xxxxxxxx
+```
+
+可选：`MARS_DOCS_PATH` 指向图鉴 / 案例资料 JSON（格式见 `api/data/docs/guidebook.demo.json`）。未配置 Key 时，`/api/capabilities` 中 `agent.available=false`，对话接口返回 `llm_unavailable` 而不是报错。
+
 ## Android
 
 Android工程位于 `mobile/android/`。需要 JDK 21、Android SDK 36及对应构建工具。
