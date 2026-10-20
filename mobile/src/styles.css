@@ -560,6 +560,9 @@ main {
   color: var(--accent);
   padding: 8px 0;
 }
+.mine-section {
+  margin-top: 34px;
+}
 .empty-state {
   padding: 70px 15px;
   text-align: center;
