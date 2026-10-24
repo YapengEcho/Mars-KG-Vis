@@ -123,6 +123,11 @@ def build_cases12(root: Path) -> dict[str, Any]:
         image = index[source_id]
         area = original["area"]
         tiles = ", ".join(image["source_tiles"])
+        # The crop window is a square of 1.5x the manual box's long edge, so the
+        # ground scale differs per target; always derive it from this image.
+        x0, y0, x1, y1 = image["native_window_world_m"]
+        window_m = x1 - x0
+        meters_per_pixel = window_m / 224
         selected.append(
             {
                 "source_id": source_id,
@@ -134,7 +139,8 @@ def build_cases12(root: Path) -> dict[str, Any]:
                 "description": (
                     f"编号 {case['catalog_id']}，{case['type']}（{TYPE_CN[case['type']]}）。"
                     f"中心位置 {ew(original['lon'])}，{ns(original['lat'])}；编目面积 {area:.2f} km²；"
-                    f"预览裁片取自 CTX 图幅 {tiles}。"
+                    f"预览裁片取自 CTX 图幅 {tiles}，窗口 {window_m / 1000:.1f} km，"
+                    f"约 {meters_per_pixel:.1f} m/像素。"
                     f"类型定义与判别依据见《火星全球滑坡编目及分类初探》表2（PDF 第8—9页）与图3（第9页）；"
                     "本条是否作为该类的典型展示案例，仍待专家确认。"
                 ),
@@ -144,6 +150,8 @@ def build_cases12(root: Path) -> dict[str, Any]:
                 "preview_path": image["image_path"],
                 "preview_sha256": image["image_sha256"],
                 "source_tiles": image["source_tiles"],
+                "crop_window_m": round(window_m, 1),
+                "meters_per_pixel": round(meters_per_pixel, 2),
                 "point_record_index0": case["point_record_index0"],
                 "boundary_record_index0": case["boundary_record_index0"],
                 "geometry": {
@@ -154,7 +162,10 @@ def build_cases12(root: Path) -> dict[str, Any]:
                 "references": [PAPER],
                 "gaps": {
                     "typicality": "候选编号未认证为该类典型案例，需滕佳杰/老师确认，可替换",
-                    "image": "仅有 224×224 预览裁片（约 38.4 m/像素窗口），展示需按编号申请高清 CTX 图",
+                    "image": (
+                        f"仅有 224×224 预览裁片（窗口 {window_m / 1000:.1f} km，约 "
+                        f"{meters_per_pixel:.1f} m/像素；窗口随目标大小变化），展示需按编号申请高清 CTX 图"
+                    ),
                     "geometry": "边界为编目多边形（PolygonZ），需转 GeoJSON/WKT 并确认火星坐标语义后才能上球",
                     "text": "标题与说明目前只写数据事实，地质描述与出处待补",
                     "coordinate": "纬度约定（planetocentric/planetographic）待核准",
@@ -191,13 +202,14 @@ def render_tables(records20: dict[str, Any], cases12: dict[str, Any]) -> str:
         "",
         "## 12 个案例候选",
         "",
-        "| # | id | 类型 | 经度 | 纬度 | 面积 km² | CTX 图幅 | 状态 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| # | id | 类型 | 经度 | 纬度 | 面积 km² | CTX 图幅 | 窗口 km | m/像素 | 状态 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for position, case in enumerate(cases12["cases"], start=1):
         lines.append(
             f"| {position} | `{case['catalog_id']}` | {case['type']} {case['type_cn']} | {ew(case['longitude'])} | "
-            f"{ns(case['latitude'])} | {case['areaKm2']:.2f} | {', '.join(case['source_tiles'])} | 候选中 |"
+            f"{ns(case['latitude'])} | {case['areaKm2']:.2f} | {', '.join(case['source_tiles'])} | "
+            f"{case['crop_window_m'] / 1000:.1f} | {case['meters_per_pixel']:.1f} | 候选中 |"
         )
     lines.append("")
     return "\n".join(lines)
