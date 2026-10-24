@@ -1,0 +1,509 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/health",
+    "query": {},
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "service": "mars-api",
+      "dataMode": "demo",
+      "version": "demo-1"
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "GET",
+    "path": "/api/catalog",
+    "query": {},
+    "status": 200,
+    "body": {
+      "version": "demo-1",
+      "mode": "demo",
+      "coordinateSystem": {
+        "body": "Mars",
+        "longitude": "east-positive, -180..180",
+        "latitude": "planetocentric, degrees"
+      },
+      "records": [
+        {
+          "id": "DEMO-001",
+          "sourceId": null,
+          "name": "示例点位 01",
+          "type": "SL",
+          "longitude": -68.2,
+          "latitude": -12.4,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-002",
+          "sourceId": null,
+          "name": "示例点位 02",
+          "type": "SP",
+          "longitude": -55.6,
+          "latitude": -9.1,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-003",
+          "sourceId": null,
+          "name": "示例点位 03",
+          "type": "FL",
+          "longitude": -77.5,
+          "latitude": -6.8,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-004",
+          "sourceId": null,
+          "name": "示例点位 04",
+          "type": "CL",
+          "longitude": -41.0,
+          "latitude": 18.2,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-005",
+          "sourceId": null,
+          "name": "示例点位 05",
+          "type": "SL",
+          "longitude": -99.7,
+          "latitude": -22.1,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-006",
+          "sourceId": null,
+          "name": "示例点位 06",
+          "type": "SP",
+          "longitude": -113.1,
+          "latitude": 8.3,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-007",
+          "sourceId": null,
+          "name": "示例点位 07",
+          "type": "FL",
+          "longitude": -27.8,
+          "latitude": -16.8,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-008",
+          "sourceId": null,
+          "name": "示例点位 08",
+          "type": "CL",
+          "longitude": 12.6,
+          "latitude": 23.5,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-009",
+          "sourceId": null,
+          "name": "示例点位 09",
+          "type": "SL",
+          "longitude": 34.2,
+          "latitude": -8.4,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-010",
+          "sourceId": null,
+          "name": "示例点位 10",
+          "type": "SP",
+          "longitude": 57.1,
+          "latitude": 14.2,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-011",
+          "sourceId": null,
+          "name": "示例点位 11",
+          "type": "FL",
+          "longitude": 82.8,
+          "latitude": -27.3,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-012",
+          "sourceId": null,
+          "name": "示例点位 12",
+          "type": "CL",
+          "longitude": 103.4,
+          "latitude": 5.6,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-013",
+          "sourceId": null,
+          "name": "示例点位 13",
+          "type": "SL",
+          "longitude": 124.1,
+          "latitude": -14.8,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-014",
+          "sourceId": null,
+          "name": "示例点位 14",
+          "type": "SP",
+          "longitude": 147.9,
+          "latitude": 29.4,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-015",
+          "sourceId": null,
+          "name": "示例点位 15",
+          "type": "FL",
+          "longitude": 166.4,
+          "latitude": -6.5,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-016",
+          "sourceId": null,
+          "name": "示例点位 16",
+          "type": "CL",
+          "longitude": -151.3,
+          "latitude": 17.7,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-017",
+          "sourceId": null,
+          "name": "示例点位 17",
+          "type": "SL",
+          "longitude": -134.8,
+          "latitude": -31.5,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-018",
+          "sourceId": null,
+          "name": "示例点位 18",
+          "type": "SP",
+          "longitude": -90.5,
+          "latitude": 35.1,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-019",
+          "sourceId": null,
+          "name": "示例点位 19",
+          "type": "FL",
+          "longitude": -21.1,
+          "latitude": -39.2,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-020",
+          "sourceId": null,
+          "name": "示例点位 20",
+          "type": "CL",
+          "longitude": 68.9,
+          "latitude": 42.4,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        }
+      ]
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "GET",
+    "path": "/api/landslides",
+    "query": {
+      "type": "SP",
+      "page": 1,
+      "pageSize": 3
+    },
+    "status": 200,
+    "body": {
+      "items": [
+        {
+          "id": "DEMO-002",
+          "sourceId": null,
+          "name": "示例点位 02",
+          "type": "SP",
+          "longitude": -55.6,
+          "latitude": -9.1,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-006",
+          "sourceId": null,
+          "name": "示例点位 06",
+          "type": "SP",
+          "longitude": -113.1,
+          "latitude": 8.3,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        },
+        {
+          "id": "DEMO-010",
+          "sourceId": null,
+          "name": "示例点位 10",
+          "type": "SP",
+          "longitude": 57.1,
+          "latitude": 14.2,
+          "areaKm2": null,
+          "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+          "imageUrl": null,
+          "source": {
+            "title": "界面演示数据",
+            "url": null
+          },
+          "isDemo": true
+        }
+      ],
+      "total": 5,
+      "page": 1,
+      "pageSize": 3,
+      "dataMode": "demo",
+      "version": "demo-1"
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "GET",
+    "path": "/api/stats",
+    "query": {
+      "type": "SP"
+    },
+    "status": 200,
+    "body": {
+      "total": 5,
+      "byType": {
+        "SL": 0,
+        "SP": 5,
+        "FL": 0,
+        "CL": 0
+      },
+      "dataMode": "demo",
+      "version": "demo-1"
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "GET",
+    "path": "/api/landslides/DEMO-001",
+    "query": {},
+    "status": 200,
+    "body": {
+      "id": "DEMO-001",
+      "sourceId": null,
+      "name": "示例点位 01",
+      "type": "SL",
+      "longitude": -68.2,
+      "latitude": -12.4,
+      "areaKm2": null,
+      "summary": "用于体验点位浏览、类型筛选与收藏。此记录由程序构造，不代表真实滑坡或地质结论。",
+      "imageUrl": null,
+      "source": {
+        "title": "界面演示数据",
+        "url": null
+      },
+      "isDemo": true
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "GET",
+    "path": "/api/capabilities",
+    "query": {},
+    "status": 200,
+    "body": {
+      "dataMode": "demo",
+      "version": "demo-1",
+      "classifier": {
+        "available": false,
+        "reason": "Classification model is not configured."
+      },
+      "detection": {
+        "available": false,
+        "reason": "Detection service is not configured."
+      }
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "GET",
+    "path": "/api/landslides/missing",
+    "query": {},
+    "status": 404,
+    "body": {
+      "detail": {
+        "code": "NOT_FOUND",
+        "message": "Landslide record was not found."
+      }
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  },
+  {
+    "method": "POST",
+    "path": "/api/landslide/classify",
+    "query": {},
+    "status": 503,
+    "body": {
+      "detail": {
+        "code": "MODEL_NOT_CONFIGURED",
+        "message": "Classification model is not configured."
+      }
+    },
+    "provenance": "Actual in-process HTTP request against20-record demo SQLite, not real inventory or Internet deployment"
+  }
+]

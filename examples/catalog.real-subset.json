@@ -1,0 +1,140 @@
+{
+  "version": "real-subset-20261024",
+  "status": "reference_subset_not_runtime_catalog",
+  "coordinateStatus": {
+    "body": "Mars",
+    "longitude": "east-positive, -180..180",
+    "latitude": "unverified, degrees",
+    "notice": "原始PRJ标注为地球WGS84，源火星纬度约定待核准；不能直接作为APP正式目录"
+  },
+  "records": [
+    {
+      "id": "ls_0493",
+      "sourceId": 493,
+      "name": "滑坡 493",
+      "type": "SL",
+      "longitude": -82.1228138889,
+      "latitude": -4.7594111111,
+      "areaKm2": 200.48074683,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0529",
+      "sourceId": 529,
+      "name": "滑坡 529",
+      "type": "SL",
+      "longitude": -79.2577083333,
+      "latitude": -4.8770111111,
+      "areaKm2": 13.4499872151,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0483",
+      "sourceId": 483,
+      "name": "滑坡 483",
+      "type": "SP",
+      "longitude": -83.7089138889,
+      "latitude": -4.6799555556,
+      "areaKm2": 35.216964408,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0533",
+      "sourceId": 533,
+      "name": "滑坡 533",
+      "type": "SP",
+      "longitude": -79.1717027778,
+      "latitude": -5.0678722222,
+      "areaKm2": 75.6841521585,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0505",
+      "sourceId": 505,
+      "name": "滑坡 505",
+      "type": "FL",
+      "longitude": -81.9558916667,
+      "latitude": -4.9237222222,
+      "areaKm2": 20.5365920448,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0597",
+      "sourceId": 597,
+      "name": "滑坡 597",
+      "type": "FL",
+      "longitude": -78.2486611111,
+      "latitude": -9.418175,
+      "areaKm2": 1.8460267148,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0482",
+      "sourceId": 482,
+      "name": "滑坡 482",
+      "type": "CL",
+      "longitude": -83.9271416667,
+      "latitude": -4.8328083333,
+      "areaKm2": 12.9381645986,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    },
+    {
+      "id": "ls_0528",
+      "sourceId": 528,
+      "name": "滑坡 528",
+      "type": "CL",
+      "longitude": -79.4300194444,
+      "latitude": -4.8533416667,
+      "areaKm2": 235.435279274,
+      "summary": "",
+      "imageUrl": null,
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      },
+      "isDemo": false
+    }
+  ]
+}
