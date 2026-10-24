@@ -87,3 +87,23 @@ api/.pytest_cache/
 /weights/
 /output/
 /tmp/
+
+# Full inventory and model assets are handed over separately; public subsets live in examples/.
+/data/manifest/
+*.shp
+*.shx
+*.dbf
+*.sbn
+*.sbx
+*.prj
+*.tif
+*.tiff
+*.safetensors
+*.pth
+*.onnx
+*.npz
+
+*.sqlite3.building
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal

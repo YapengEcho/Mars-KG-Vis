@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from api.sqlite_store import load_sqlite_catalog
 
 from api.schemas import (
     Capabilities,
@@ -57,14 +58,20 @@ def filter_records(
     return records
 
 
-def create_app(catalog_path: str | Path | None = None) -> FastAPI:
+def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None) -> FastAPI:
+    if database_path is not None and catalog_path is not None:
+        raise ValueError("Choose a catalog file or a database, not both")
+    selected_database = database_path or (os.environ.get("MARS_DB_PATH") if catalog_path is None else None)
     selected_path = Path(
         catalog_path or os.environ.get("MARS_CATALOG_PATH") or DEFAULT_CATALOG
     ).expanduser().resolve()
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        application.state.catalog = load_catalog(selected_path)
+        application.state.catalog = (
+            load_sqlite_catalog(Path(selected_database))
+            if selected_database else load_catalog(selected_path)
+        )
         yield
 
     application = FastAPI(
