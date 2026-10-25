@@ -1,0 +1,77 @@
+/* 全局样式：火星大屏暗色主题 */
+:root {
+  --mars-bg: #0b0e14;
+  --mars-panel: rgba(20, 26, 38, 0.85);
+  --mars-border: #2f3b52;
+  --mars-text: #dce3f0;
+  --mars-dim: #8b95a8;
+  --mars-accent: #e2574c;
+  --mars-accent2: #f0b04d;
+  --mars-blue: #4fb0e0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--mars-bg);
+  color: var(--mars-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 通用面板 */
+.panel {
+  background: var(--mars-panel);
+  border: 1px solid var(--mars-border);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.panel-title {
+  font-size: 16px;
+  color: var(--mars-text);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--mars-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  background: linear-gradient(var(--mars-accent), var(--mars-accent2));
+  border-radius: 2px;
+}
+
+/* 通用滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--mars-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .panel-title {
+    font-size: 14px;
+  }
+}
