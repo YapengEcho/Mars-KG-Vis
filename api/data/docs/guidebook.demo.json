@@ -1,0 +1,49 @@
+{
+  "docs": [
+    {
+      "doc_id": "doc-sl",
+      "doc_type": "type_intro",
+      "title": "SL 滑移型说明",
+      "text": "占位资料：SL 类型的正式说明、形态特征与成因解释，待图鉴内容负责人（滕佳杰）补充后替换。",
+      "slide_ids": [],
+      "source_title": "占位资料（待滕佳杰补充，非正式内容）",
+      "source_url": null
+    },
+    {
+      "doc_id": "doc-sp",
+      "doc_type": "type_intro",
+      "title": "SP 滑塌型说明",
+      "text": "占位资料：SP 类型的正式说明、形态特征与成因解释，待图鉴内容负责人（滕佳杰）补充后替换。",
+      "slide_ids": [],
+      "source_title": "占位资料（待滕佳杰补充，非正式内容）",
+      "source_url": null
+    },
+    {
+      "doc_id": "doc-fl",
+      "doc_type": "type_intro",
+      "title": "FL 流动型说明",
+      "text": "占位资料：FL 类型的正式说明、形态特征与成因解释，待图鉴内容负责人（滕佳杰）补充后替换。",
+      "slide_ids": [],
+      "source_title": "占位资料（待滕佳杰补充，非正式内容）",
+      "source_url": null
+    },
+    {
+      "doc_id": "doc-cl",
+      "doc_type": "type_intro",
+      "title": "CL 复合型说明",
+      "text": "占位资料：CL 类型的正式说明、形态特征与成因解释，待图鉴内容负责人（滕佳杰）补充后替换。",
+      "slide_ids": [],
+      "source_title": "占位资料（待滕佳杰补充，非正式内容）",
+      "source_url": null
+    },
+    {
+      "doc_id": "doc-compare",
+      "doc_type": "compare",
+      "title": "滑坡类型对比",
+      "text": "占位资料：两类及四类滑坡在形态、运动方式上的系统对比，待图鉴内容负责人（滕佳杰）补充后替换。",
+      "slide_ids": [],
+      "source_title": "占位资料（待滕佳杰补充，非正式内容）",
+      "source_url": null
+    }
+  ]
+}

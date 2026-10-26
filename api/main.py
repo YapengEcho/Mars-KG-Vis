@@ -8,7 +8,13 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from api.sqlite_store import load_sqlite_catalog
 
+from api.agent import llm
+from api.agent.records import TraceRecorder
+from api.agent.retrieval import KeywordRetriever, load_docs
+from api.agent.schemas import ChatRequest, ChatResponse
+from api.agent.service import run_agent
 from api.schemas import (
+    AgentCapability,
     Capabilities,
     Capability,
     Catalog,
@@ -21,8 +27,19 @@ from api.schemas import (
 
 
 DEFAULT_CATALOG = Path(__file__).resolve().parents[1] / "examples" / "catalog.demo.json"
+DEFAULT_DOCS = Path(__file__).resolve().parent / "data" / "docs" / "guidebook.demo.json"
 CLASSIFICATION_REASON = "Classification model is not configured."
 DETECTION_REASON = "Detection service is not configured."
+LLM_REASON = "LLM API key is not configured."
+
+
+def build_retriever() -> KeywordRetriever:
+    docs_path = os.environ.get("MARS_DOCS_PATH")
+    if docs_path:
+        return KeywordRetriever(load_docs(docs_path))
+    if DEFAULT_DOCS.exists():
+        return KeywordRetriever(load_docs(DEFAULT_DOCS))
+    return KeywordRetriever([])
 
 
 def load_catalog(path: Path) -> Catalog:
@@ -72,6 +89,8 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
             load_sqlite_catalog(Path(selected_database))
             if selected_database else load_catalog(selected_path)
         )
+        application.state.retriever = build_retriever()
+        application.state.tracer = TraceRecorder()
         yield
 
     application = FastAPI(
@@ -159,11 +178,26 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
     @application.get("/api/capabilities", response_model=Capabilities)
     def capabilities(request: Request):
         catalog = get_catalog(request)
+        agent_available = llm.is_configured()
         return Capabilities(
             dataMode=catalog.mode,
             version=catalog.version,
             classifier=Capability(available=False, reason=CLASSIFICATION_REASON),
             detection=Capability(available=False, reason=DETECTION_REASON),
+            agent=AgentCapability(
+                available=agent_available,
+                model=llm.model_name(),
+                reason=None if agent_available else LLM_REASON,
+            ),
+        )
+
+    @application.post("/api/agent/chat", response_model=ChatResponse)
+    def agent_chat(payload: ChatRequest, request: Request):
+        return run_agent(
+            payload,
+            get_catalog(request),
+            request.app.state.retriever,
+            request.app.state.tracer,
         )
 
     @application.post("/api/landslide/classify", status_code=503)
