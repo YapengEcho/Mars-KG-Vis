@@ -50,7 +50,7 @@ const matches = computed(() => filterSlides(atlas.state.catalog.records, query.v
       <Search :size="18" /><input
         v-model="query"
         aria-label="搜索目录"
-        placeholder="输入编号或名称"
+        placeholder="输入编号、名称或说明"
       />
     </div>
     <div class="record-list">

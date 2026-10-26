@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterSlides, parseCatalog } from './catalog'
+import { filterSlides, findSlide, parseCatalog } from './catalog'
 import demo from '../../../examples/catalog.demo.json'
 
 describe('catalog boundary', () => {
@@ -66,5 +66,20 @@ describe('catalog boundary', () => {
     const catalog = parseCatalog(demo)
     expect(filterSlides(catalog.records, 'demo-001', 'SL').map((x) => x.id)).toEqual(['DEMO-001'])
     expect(filterSlides(catalog.records, 'demo-001', 'FL')).toEqual([])
+  })
+  it('searches the same fields as the API list endpoint', () => {
+    const catalog = parseCatalog(demo)
+    expect(filterSlides(catalog.records, '程序构造', '')).toHaveLength(20)
+    expect(filterSlides(catalog.records, '002', 'SP').map((x) => x.id)).toEqual(['DEMO-002'])
+    expect(filterSlides(catalog.records, '002', 'FL')).toEqual([])
+  })
+  it('resolves focus links by exact record id or original number', () => {
+    const records = parseCatalog(demo).records
+    expect(findSlide(records, 'demo-001')?.id).toBe('DEMO-001')
+    const real = { ...records[0]!, id: 'REAL-001', sourceId: 1001, isDemo: false }
+    expect(findSlide([real], '1001')?.id).toBe('REAL-001')
+    expect(findSlide([real], 'REAL-001')?.id).toBe('REAL-001')
+    expect(findSlide([real], '100')).toBeUndefined()
+    expect(findSlide([real], ' ')).toBeUndefined()
   })
 })

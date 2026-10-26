@@ -63,11 +63,25 @@ export function parseCatalog(value: unknown): Catalog {
   }
   return c as Catalog
 }
+/**
+ * Mirrors the API's `q` matching: id, source number, name and summary, so the
+ * APP and the Agent return the same records for the same query.
+ */
 export function filterSlides(records: Slide[], query: string, type: SlideType | ''): Slide[] {
   const key = query.trim().toLocaleLowerCase()
   return records.filter(
     (r) =>
       (!type || r.type === type) &&
-      (!key || `${r.id} ${r.sourceId ?? ''} ${r.name} ${r.type}`.toLocaleLowerCase().includes(key)),
+      (!key ||
+        `${r.id} ${r.sourceId ?? ''} ${r.name} ${r.summary}`.toLocaleLowerCase().includes(key)),
+  )
+}
+
+/** Resolves an exact record id or original number used by `?focus=` links. */
+export function findSlide(records: Slide[], key: string): Slide | undefined {
+  const term = key.trim().toLocaleLowerCase()
+  if (!term) return undefined
+  return records.find(
+    (r) => r.id.toLocaleLowerCase() === term || String(r.sourceId ?? '') === term,
   )
 }

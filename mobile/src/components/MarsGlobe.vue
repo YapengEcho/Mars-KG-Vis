@@ -19,7 +19,10 @@ interface GlobePoint {
 }
 
 const props = defineProps<{ points: GlobePoint[]; selectedId?: string }>()
-const emit = defineEmits<{ select: [id: string] }>()
+const emit = defineEmits<{
+  select: [id: string]
+  basemap: [state: 'loading' | 'ready' | 'fallback']
+}>()
 const host = ref<HTMLDivElement | null>(null)
 const failed = ref(false)
 const ready = ref(false)
@@ -236,10 +239,12 @@ function loadRealTexture(): void {
         surfaceMaterial.bumpMap = null
         surfaceMaterial.needsUpdate = true
       }
+      emit('basemap', 'ready')
     },
     undefined,
     () => {
       // Keep the illustrative fallback when the base map cannot be fetched.
+      emit('basemap', 'fallback')
     },
   )
 }
@@ -439,6 +444,7 @@ function updateMotionPreference(): void {
 function onContextLost(event: Event): void {
   event.preventDefault()
   failed.value = true
+  emit('basemap', 'fallback')
   if (frame) cancelAnimationFrame(frame)
   frame = 0
 }
@@ -494,6 +500,7 @@ onMounted(() => {
     resume()
   } catch {
     failed.value = true
+    emit('basemap', 'fallback')
   }
 })
 
