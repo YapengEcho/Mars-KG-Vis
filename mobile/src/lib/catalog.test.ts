@@ -32,6 +32,36 @@ describe('catalog boundary', () => {
     catalog.coordinateSystem.body = 'Earth'
     expect(() => parseCatalog(catalog)).toThrow()
   })
+  it('accepts a fully-formed catalog-mode record set', () => {
+    const catalog = {
+      version: 'catalog-1',
+      mode: 'catalog',
+      coordinateSystem: {
+        body: 'Mars',
+        longitude: 'east-positive, -180..180',
+        latitude: 'planetocentric, degrees',
+      },
+      records: [
+        {
+          id: 'REAL-001',
+          sourceId: 1001,
+          name: '真实点位 01',
+          type: 'SL',
+          longitude: -68.2,
+          latitude: -12.4,
+          areaKm2: 210.5,
+          summary: '真实目录样例，用于验证非示例数据链路。',
+          imageUrl: null,
+          source: { title: '真实来源', url: null },
+          isDemo: false,
+        },
+      ],
+    }
+    const parsed = parseCatalog(catalog)
+    expect(parsed.mode).toBe('catalog')
+    expect(parsed.records[0]?.isDemo).toBe(false)
+    expect(parsed.records[0]?.sourceId).toBe(1001)
+  })
   it('combines case-insensitive search with the selected type', () => {
     const catalog = parseCatalog(demo)
     expect(filterSlides(catalog.records, 'demo-001', 'SL').map((x) => x.id)).toEqual(['DEMO-001'])

@@ -81,7 +81,7 @@ function reset() {
         </button>
       </div>
       <div class="globe-footer">
-        <span>拖动旋转 · 双指缩放 · 点选查看</span><span>纹理为视觉示意</span>
+        <span>拖动旋转 · 双指缩放 · 点选查看</span><span>底图：Solar System Scope（CC BY 4.0）</span>
       </div>
     </div>
     <section class="discovery-section">

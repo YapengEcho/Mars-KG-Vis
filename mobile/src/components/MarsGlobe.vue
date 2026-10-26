@@ -49,6 +49,8 @@ let focusAnimation: { start: THREE.Vector3; end: THREE.Vector3; began: number } 
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 const trackedTextures: THREE.Texture[] = []
+let surfaceMaterial: THREE.MeshStandardMaterial | undefined
+const realTextureUrl = `${import.meta.env.BASE_URL}textures/mars.jpg`
 
 // An original procedural illustration, without geographic imagery or elevation claims.
 function makeIllustrativeTexture(): THREE.CanvasTexture {
@@ -164,17 +166,16 @@ function makeIllustrativeTexture(): THREE.CanvasTexture {
 function addGlobe(): void {
   if (!scene) return
   const surfaceTexture = makeIllustrativeTexture()
-  const surface = new THREE.Mesh(
-    new THREE.SphereGeometry(radius, 80, 48),
-    new THREE.MeshStandardMaterial({
-      map: surfaceTexture,
-      bumpMap: surfaceTexture,
-      bumpScale: 0.024,
-      roughness: 1,
-      metalness: 0,
-    }),
-  )
+  surfaceMaterial = new THREE.MeshStandardMaterial({
+    map: surfaceTexture,
+    bumpMap: surfaceTexture,
+    bumpScale: 0.024,
+    roughness: 1,
+    metalness: 0,
+  })
+  const surface = new THREE.Mesh(new THREE.SphereGeometry(radius, 80, 48), surfaceMaterial)
   scene.add(surface)
+  loadRealTexture()
   const atmosphere = new THREE.Mesh(
     new THREE.SphereGeometry(radius * 1.028, 64, 40),
     new THREE.ShaderMaterial({
@@ -214,6 +215,33 @@ function addGlobe(): void {
   )
   selectedRing.visible = selectionDot.visible = false
   scene.add(selectedRing, selectionDot)
+}
+
+// Swap in a sourced equirectangular base map once it loads; the procedural
+// canvas texture stays as the fallback so the globe still renders offline.
+// Base map: Solar System Scope "2k_mars.jpg" (CC BY 4.0), 2048 x 1024.
+function loadRealTexture(): void {
+  new THREE.TextureLoader().load(
+    realTextureUrl,
+    (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace
+      texture.wrapS = THREE.RepeatWrapping
+      // SphereGeometry's u=0.25 line faces longitude zero; shift the standard
+      // equirectangular map (u=0 at 180°W) so east-positive longitudes align.
+      texture.offset.x = 0.25
+      texture.anisotropy = Math.min(8, renderer?.capabilities.getMaxAnisotropy() ?? 1)
+      trackedTextures.push(texture)
+      if (surfaceMaterial) {
+        surfaceMaterial.map = texture
+        surfaceMaterial.bumpMap = null
+        surfaceMaterial.needsUpdate = true
+      }
+    },
+    undefined,
+    () => {
+      // Keep the illustrative fallback when the base map cannot be fetched.
+    },
+  )
 }
 
 function disposeMesh(mesh: THREE.Mesh): void {
