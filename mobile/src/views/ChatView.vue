@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { LoaderCircle, MapPin, ScanLine, Send, Sparkles } from '@lucide/vue'
 import SlideCard from '../components/SlideCard.vue'
 import { fetchCapabilities, sendChatMessage } from '../services/api'
-import type { AgentAction, ChatMessage, ChatResponse } from '../services/api'
+import type { AgentAction, ChatResponse } from '../services/api'
+import { buildChatHistory } from '../lib/chatHistory'
 interface UIMessage {
   role: 'user' | 'assistant'
   content: string
@@ -14,13 +15,9 @@ interface UIMessage {
   status?: ChatResponse['status']
 }
 const router = useRouter()
-const thread = ref<UIMessage[]>([
-  {
-    role: 'assistant',
-    content:
-      '你好，我是火星滑坡助手。可以问我：某类滑坡有哪些、数量统计、类型与案例资料，或让我把某个点位定位到地图上。',
-  },
-])
+const WELCOME_MESSAGE =
+  '你好，我是火星滑坡助手。可以问我：某类滑坡有哪些、数量统计、类型与案例资料，或让我把某个点位定位到地图上。'
+const thread = ref<UIMessage[]>([{ role: 'assistant', content: WELCOME_MESSAGE }])
 const draft = ref('')
 const busy = ref(false)
 const error = ref('')
@@ -48,10 +45,7 @@ async function send() {
   busy.value = true
   await scrollToEnd()
   try {
-    const history: ChatMessage[] = thread.value.map((message) => ({
-      role: message.role,
-      content: message.content,
-    }))
+    const history = buildChatHistory(thread.value)
     const response = await sendChatMessage(history)
     thread.value.push({
       role: 'assistant',
@@ -67,6 +61,13 @@ async function send() {
     busy.value = false
     await scrollToEnd()
   }
+}
+function resetThread() {
+  if (busy.value) return
+  thread.value = [{ role: 'assistant', content: WELCOME_MESSAGE }]
+  draft.value = ''
+  error.value = ''
+  scrollToEnd()
 }
 function runAction(action: AgentAction) {
   if (action.type === 'locate' && action.slideId) {
@@ -90,8 +91,13 @@ function statusText() {
         <span class="eyebrow">MARS ASSISTANT</span>
         <h1>滑坡助手</h1>
       </div>
-      <div class="service-status" :class="{ ready: agentReady === true }">
-        <span></span>{{ statusText() }}
+      <div class="chat-actions">
+        <div class="service-status" :class="{ ready: agentReady === true }">
+          <span></span>{{ statusText() }}
+        </div>
+        <button class="text-button" type="button" :disabled="busy" @click="resetThread">
+          新建对话
+        </button>
       </div>
     </div>
     <div ref="scrollEl" class="chat-thread">
@@ -163,6 +169,15 @@ function statusText() {
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 14px;
+}
+.chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chat-actions .text-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
 }
 .chat-top h1 {
   font-size: 26px;

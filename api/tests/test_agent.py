@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from api.schemas import Catalog
 from api.agent.retrieval import KeywordRetriever
+from api.agent import llm
 from api.agent.tools import execute_tool
 def make_catalog() -> Catalog:
     return Catalog.model_validate(
@@ -84,3 +85,37 @@ def test_tools_return_consistent_results():
     docs = execute_tool("search_docs", {"q": "滑移"}, catalog, retriever)
     assert docs.ok
     assert docs.payload["results"] == []
+def test_openai_key_is_not_sent_to_default_deepseek_host(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-only")
+    config = llm.settings()
+    assert config["base_url"] == llm.DEFAULT_BASE_URL
+    assert config["api_key"] == ""
+    assert llm.is_configured() is False
+def test_deepseek_key_is_used_for_deepseek_host(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+    assert llm.settings()["api_key"] == "sk-deepseek"
+    assert llm.is_configured() is True
+def test_key_follows_explicit_provider_address(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
+    assert llm.settings()["api_key"] == "sk-openai"
+def _messages(count: int) -> list[dict]:
+    return [{"role": "user", "content": f"message {index}"} for index in range(count)]
+def test_agent_accepts_message_list_at_limit(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with TestClient(create_app()) as client:
+        response = client.post("/api/agent/chat", json={"messages": _messages(50)})
+    assert response.status_code == 200
+def test_agent_rejects_message_list_over_limit(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    with TestClient(create_app()) as client:
+        response = client.post("/api/agent/chat", json={"messages": _messages(51)})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "messages"]
