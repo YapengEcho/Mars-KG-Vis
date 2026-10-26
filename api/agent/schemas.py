@@ -7,7 +7,7 @@ ActionType = Literal["locate", "open_recognize", "open_task"]
 class AgentModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 class ChatMessage(AgentModel):
-    role: Literal["user", "assistant", "system"]
+    role: Literal["user", "assistant"]
     content: str = Field(min_length=1)
 class ChatRequest(AgentModel):
     sessionId: str | None = Field(default=None, max_length=100)

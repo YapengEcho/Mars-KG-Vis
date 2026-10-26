@@ -25,7 +25,7 @@ export async function classifyImage(file: File): Promise<unknown> {
   return r.json()
 }
 export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant'
   content: string
 }
 export interface Citation {
