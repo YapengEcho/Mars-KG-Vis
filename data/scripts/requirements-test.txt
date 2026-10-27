@@ -1,0 +1,8 @@
+# CPU checks for annotation, dataset construction and cascade metrics.
+numpy>=1.26,<3
+Pillow>=10,<13
+pyshp>=2.3,<4
+tifffile>=2024.1
+scipy>=1.11,<2
+PyYAML>=6,<7
+pytest>=8,<9

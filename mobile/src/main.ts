@@ -9,9 +9,12 @@ const router = createRouter({
   routes: [
     { path: '/', component: ExploreView },
     { path: '/atlas', component: () => import('./views/AtlasView.vue') },
-    { path: '/identify', component: () => import('./views/IdentifyView.vue') },
-    { path: '/assistant', component: () => import('./views/AssistantView.vue') },
+    { path: '/recognize', component: () => import('./views/IdentifyView.vue') },
+    { path: '/chat', component: () => import('./views/ChatView.vue') },
     { path: '/mine', component: () => import('./views/MineView.vue') },
+    { path: '/identify', redirect: '/recognize' },
+    { path: '/assistant', redirect: '/chat' },
+    { path: '/saved', redirect: '/mine' },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })

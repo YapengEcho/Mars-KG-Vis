@@ -2,6 +2,8 @@
 
 火星滑坡探索移动端，支持火星球浏览、目录查询、类型图鉴与点位收藏。
 
+仓库另保留滑坡检测与四分类的[模型研究代码及结果说明](docs/research/README.md)，包括人工修框、数据导出、训练对照与联合评估。研究权重尚未接入移动端 API。
+
 ## 当前功能
 
 - 火星球旋转、缩放、点位选择与定位；配置底图后使用经核对的全球影像，加载失败时退回示意纹理或坐标示意。
@@ -43,6 +45,28 @@ VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
 重启前端后从API读取目录。原生APP连接远端服务时使用HTTPS；手机上的127.0.0.1指向手机自身。
+
+## SQLite
+
+API支持JSON和SQLite。建立演示数据库：
+
+```bash
+python scripts/import_catalog_sqlite.py --input examples/catalog.demo.json --output output/catalog_demo.sqlite3
+```
+
+设置`MARS_DB_PATH`为数据库绝对路径后启动API。原始真实目录导入后保持staging，坐标核准前不会作为正式目录发布。结构及约定见[数据库说明](contracts/database.md)和[识别接口约定](contracts/recognition.md)。识别HTTP入口目前仍返回503。
+
+## 智能助手（Agent）
+
+对话接口为 `POST /api/agent/chat`，默认未启用，需在服务端配置语言模型（凭据不进仓库）：
+
+```dotenv
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+DEEPSEEK_API_KEY=sk-xxxxxxxx
+```
+
+可选：`MARS_DOCS_PATH` 指向图鉴 / 案例资料 JSON（格式见 `api/data/docs/guidebook.demo.json`）。未配置 Key 时，`/api/capabilities` 中 `agent.available=false`，对话接口返回 `llm_unavailable` 而不是报错。
 
 ## Android
 
@@ -89,6 +113,11 @@ examples/                公开演示目录
 contracts/               数据格式与接口说明
 scripts/                 本地目录转换工具
 .github/workflows/       构建与接口检查
+data/scripts/            模型研究、数据构建与审核工具
+tests/                   数据与审核流程测试
+tools/maintenance/       研究结果回算与本地维护入口
 ```
 
-真实目录按 [数据格式](contracts/catalog.md) 接入，不与示例记录混用。研究影像、人工标注、模型权重与访问凭据不包含在此仓库中。
+仓库提供20条虚构演示记录及[8条真实字段样例](examples/README.md)。完整目录、SHP、研究影像、人工标注、模型权重和访问凭据单独交接，不随源码公开。真实样例的坐标口径待核准，不直接作为APP运行目录。
+
+目录按[数据格式](contracts/catalog.md)接入；实际目录HTTP样例见[接口样例](contracts/examples/catalog_api.demo.json)。提交前可运行`python scripts/check_public_assets.py`检查公开数据范围。

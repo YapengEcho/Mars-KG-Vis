@@ -93,11 +93,16 @@ class Capability(StrictModel):
     reason: str
 
 
+class AgentCapability(StrictModel):
+    available: bool
+    model: str
+    reason: str | None = None
 class Capabilities(StrictModel):
     dataMode: DataMode
     version: str
     classifier: Capability
     detection: Capability
+    agent: AgentCapability
 
 
 class Health(StrictModel):
