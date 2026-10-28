@@ -47,6 +47,7 @@ export const atlas = {
     }
   },
   async load() {
+    if (state.loading) return
     const url =
       import.meta.env.VITE_CATALOG_URL?.trim() || (apiBase ? `${apiBase}/api/catalog` : '')
     if (!url) return
@@ -57,7 +58,7 @@ export const atlas = {
       state.catalog = parseCatalog(await r.json())
       state.error = ''
     } catch {
-      state.error = '目录加载失败，当前显示示例目录。'
+      state.error = '目录加载失败，当前显示示例目录。请检查网络或服务后重试。'
     } finally {
       state.loading = false
     }

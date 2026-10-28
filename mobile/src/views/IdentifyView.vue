@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ImagePlus, ScanLine, Info, X } from '@lucide/vue'
+import PageHeading from '../components/PageHeading.vue'
 import { fetchCapabilities, classifyImage } from '../services/api'
 const available = ref(false)
 const serviceText = ref('识别服务尚未接入')
@@ -62,11 +63,11 @@ onBeforeUnmount(clear)
 </script>
 <template>
   <section class="content-view">
-    <div class="page-heading">
-      <span class="eyebrow">A CLOSER LOOK</span>
-      <h1>滑坡类型识别</h1>
-      <p>上传已裁剪的单个滑坡图片，查看类型识别结果。</p>
-    </div>
+    <PageHeading
+      eyebrow="A CLOSER LOOK"
+      title="滑坡类型识别"
+      description="上传已裁剪的单个滑坡图片，查看类型识别结果。"
+    />
     <div class="service-status"><span :class="{ ready: available }"></span>{{ serviceText }}</div>
     <label class="upload-area" :class="{ 'has-image': preview }"
       ><img v-if="preview" :src="preview" alt="待识别图片预览" /><template v-else

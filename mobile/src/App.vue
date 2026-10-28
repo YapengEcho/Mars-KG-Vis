@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { Bookmark, Compass, Layers, ScanLine, Sparkles } from '@lucide/vue'
+import { Compass, Layers, ScanLine, Sparkles, User } from '@lucide/vue'
 import SlideDetail from './components/SlideDetail.vue'
 import { atlas } from './stores/atlas'
 const tabs = [
@@ -8,7 +8,7 @@ const tabs = [
   { to: '/atlas', label: '图鉴', icon: Layers },
   { to: '/recognize', label: '识别', icon: ScanLine },
   { to: '/chat', label: '助手', icon: Sparkles },
-  { to: '/saved', label: '收藏', icon: Bookmark },
+  { to: '/mine', label: '我的', icon: User },
 ]
 onMounted(() => atlas.load())
 </script>
@@ -23,7 +23,8 @@ onMounted(() => atlas.load())
       >
     </header>
     <div v-if="atlas.state.error || atlas.state.storageError" class="notice" role="status">
-      {{ atlas.state.error || atlas.state.storageError }}
+      <span>{{ atlas.state.error || atlas.state.storageError }}</span>
+      <button v-if="atlas.state.error" class="text-button" @click="atlas.load()">重试</button>
     </div>
     <main id="main-content"><RouterView /></main>
     <nav class="bottom-nav" aria-label="主导航">

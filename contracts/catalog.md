@@ -42,7 +42,11 @@
 
 静态目录放到 `mobile/public/data/catalog.local.json`，在 `mobile/.env.local` 设置 `VITE_CATALOG_URL=/data/catalog.local.json`。此路径优先于API。该本地文件不提交Git。
 
-API读取目录使用环境变量 `MARS_CATALOG_PATH`；前端设置 `VITE_API_BASE_URL` 后请求 `GET /api/catalog`。未设置目录和API时使用内置演示目录；加载失败时明确提示当前显示示例。
+API读取目录使用环境变量 `MARS_CATALOG_PATH`；前端设置 `VITE_API_BASE_URL` 后请求 `GET /api/catalog`。未设置目录和API时使用内置演示目录；加载失败时明确提示当前显示示例，并提供重试入口。
+
+APP的搜索字段与 `GET /api/landslides` 的 `q` 一致：记录 `id`、原始编号 `sourceId`、名称与说明；类型筛选独立。同一查询在APP、API与Agent中返回相同记录。
+
+页面通过 `#/explore?focus=<记录id或原始编号>` 定位点位；编号不存在或目录未加载时在页面内提示，不静默失败。目录模式在页面显示为“真实目录”，示例模式显示“示例数据”，二者不混用。
 
 转换已有JSON：
 
