@@ -2,7 +2,8 @@
 from fastapi.testclient import TestClient
 from api.main import create_app
 from api.schemas import Catalog
-from api.agent.retrieval import KeywordRetriever
+from pathlib import Path
+from api.agent.retrieval import KeywordRetriever, load_docs
 from api.agent import llm
 from api.agent.tools import execute_tool
 def make_catalog() -> Catalog:
@@ -129,3 +130,35 @@ def test_agent_rejects_client_supplied_system_role(monkeypatch):
         )
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "messages", 0, "role"]
+GUIDEBOOK = Path(__file__).resolve().parents[1] / "data" / "docs" / "guidebook.demo.json"
+def guidebook_retriever() -> KeywordRetriever:
+    return KeywordRetriever(load_docs(GUIDEBOOK))
+def test_guidebook_has_no_placeholder_text():
+    docs = load_docs(GUIDEBOOK)
+    assert len(docs) >= 20
+    assert all("占位资料" not in doc.text for doc in docs)
+    assert all(doc.source_url and doc.source_url.startswith("https://doi.org/") for doc in docs)
+def test_search_docs_returns_sourced_fragments():
+    result = execute_tool(
+        "search_docs", {"q": "滑移型滑坡是什么"}, make_catalog(), guidebook_retriever()
+    )
+    assert result.ok
+    assert result.payload["results"]
+    first = result.payload["results"][0]
+    assert "滑移型" in first["title"]
+    assert first["source"]
+    assert result.citations[0].url.startswith("https://doi.org/")
+def test_search_docs_filters_by_doc_type():
+    result = execute_tool(
+        "search_docs",
+        {"q": "火星滑坡分布在哪里", "doc_type": "distribution"},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    assert all(item["doc_type"] == "distribution" for item in result.payload["results"])
+def test_rare_term_outranks_common_term():
+    docs = guidebook_retriever().search("体积效应", limit=1)
+    assert docs
+    assert docs[0].doc_id == "doc-volume-effect"
