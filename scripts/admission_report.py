@@ -40,11 +40,13 @@ from typing import Any, Iterable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from handoff_check import parse_dms, sha256_of  # noqa: E402
+import mars_latitude  # noqa: E402
 
 SLIDE_TYPES = ("SL", "SP", "FL", "CL")
 TYPE_ALIASES = {"RL": "SL", "DF": "FL"}
 PAPER_COUNTS = {"SL": 1787, "SP": 321, "FL": 50, "CL": 813}
 MARS_RADIUS_M = 3396190.0
+KM_PER_DEGREE = mars_latitude.KM_PER_DEGREE
 COORD_TOLERANCE_DEG = 5e-6
 AREA_TOLERANCE = 0.005
 CROP_RATIO_MIN, CROP_RATIO_MAX = 1.45, 1.55
@@ -150,6 +152,7 @@ def check_coordinates(
     catalog: list[dict[str, Any]],
     index: list[dict[str, Any]],
     report: Admission,
+    latitude_convention: str = "planetographic",
 ) -> None:
     out_of_range = [
         record["id"]
@@ -172,6 +175,26 @@ def check_coordinates(
         sum(count - 1 for count in duplicates.values()),
         f"{len(duplicates)} 组重复坐标" if duplicates else "无重复坐标",
     )
+
+    label = (
+        "行星图形纬度（planetographic）"
+        if latitude_convention == "planetographic"
+        else "行星心纬度（planetocentric）"
+    )
+    if latitude_convention == "planetographic":
+        shifts = [mars_latitude.shift_deg(record["lat"]) for record in catalog]
+        moved = sum(1 for shift in shifts if shift > 0.01)
+        max_shift = max(shifts) if shifts else 0.0
+        detail = (
+            f"源清单为{label}；按 IAU 2000 椭球 (b/a)² 换算为行星心纬度后入库，"
+            f"{moved} 条移动超过 0.01°，最大 {max_shift:.4f}°（约 {max_shift * KM_PER_DEGREE:.1f} km）"
+        )
+        status = "pass"
+    else:
+        moved = 0
+        detail = f"源清单为{label}，无需换算"
+        status = "pass"
+    report.add("coords.latitude_convention", "纬度约定与换算", status, moved, detail)
 
     try:
         import shapefile  # pyshp
@@ -236,7 +259,7 @@ def check_coordinates(
     )
     outside_detail = ""
     if outside:
-        shown = "，".join(f"{sid}（偏离 {dist * 111.32:.0f} km）" for sid, dist in outside[:5])
+        shown = "，".join(f"{sid}（偏离 {dist * KM_PER_DEGREE:.1f} km）" for sid, dist in outside[:5])
         outside_detail = f"越界 {len(outside)} 条：{shown}"
     outside_status = "pass" if not outside else ("warn" if len(outside) <= len(catalog) * 0.005 else "fail")
     report.add(
@@ -404,7 +427,13 @@ def check_geometry(root: Path, catalog: list[dict[str, Any]], index: list[dict[s
     )
 
 
-def run(root: Path, *, check_sha: bool = True, coordinate_evidence: str | None = None) -> dict[str, Any]:
+def run(
+    root: Path,
+    *,
+    check_sha: bool = True,
+    coordinate_evidence: str | None = None,
+    latitude_convention: str = "planetographic",
+) -> dict[str, Any]:
     catalog = read_json(root / "01_catalog" / "mars_landslides.json")
     index = read_json(root / "01_catalog" / "source_id_index.json")
     images = read_json(root / "03_images" / "image_index.json")
@@ -412,7 +441,7 @@ def run(root: Path, *, check_sha: bool = True, coordinate_evidence: str | None =
     report = Admission()
     check_identifiers(catalog, report)
     check_types(catalog, index, report)
-    check_coordinates(root, catalog, index, report)
+    check_coordinates(root, catalog, index, report, latitude_convention)
     check_missing(catalog, images, report)
     check_images(root, images, report, check_sha)
     check_geometry(root, catalog, index, report)
@@ -425,6 +454,7 @@ def run(root: Path, *, check_sha: bool = True, coordinate_evidence: str | None =
         },
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "coordinate_evidence": coordinate_evidence,
+        "latitude_convention": latitude_convention,
         "summary": report.summary(),
         "verdict": report.verdict(coordinate_evidence),
         "blockers": [check["id"] for check in report.blockers],
@@ -464,6 +494,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", type=Path)
     parser.add_argument("--md", type=Path)
     parser.add_argument("--coordinate-evidence", help="核准纬度约定的依据；提供后结论才可能是 ready_for_import")
+    parser.add_argument(
+        "--latitude-convention",
+        choices=("planetographic", "planetocentric"),
+        default="planetographic",
+        help="源清单的纬度约定（默认 planetographic）",
+    )
     parser.add_argument("--skip-sha", action="store_true")
     args = parser.parse_args(argv)
 
@@ -471,7 +507,12 @@ def main(argv: list[str] | None = None) -> int:
     if not (root / "01_catalog" / "mars_landslides.json").is_file():
         parser.error(f"{root} 不是交接包目录")
 
-    report = run(root, check_sha=not args.skip_sha, coordinate_evidence=args.coordinate_evidence)
+    report = run(
+        root,
+        check_sha=not args.skip_sha,
+        coordinate_evidence=args.coordinate_evidence,
+        latitude_convention=args.latitude_convention,
+    )
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

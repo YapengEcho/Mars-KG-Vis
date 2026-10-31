@@ -24,6 +24,7 @@ D:\python_project\.venv-api\Scripts\python.exe -c "import fastapi, pydantic, sha
 ```
 
 `--find-links` 的匹配要接受 `-none-any.whl`（`colorama` 就是 `py2.py3-none-any`）。
+`pillow` 必须用 `<13`（`pyproject` 约束 `Pillow>=10.4,<13`），`openai` 必须 `>=1.50,<2`。
 
 ## 2. 命令
 
@@ -31,29 +32,32 @@ D:\python_project\.venv-api\Scripts\python.exe -c "import fastapi, pydantic, sha
 $py = 'D:\python_project\.venv-api\Scripts\python.exe'
 $handoff = 'D:\python_project\teng_jiajie_week1_20261024'
 $out = 'D:\python_project\.tmp\week2'
+$evidence = '2026-10-31 老师确认：编目纬度按行星面纬度（planetographic）使用'
 
-# 1) 准入
-& $py scripts/admission_report.py --handoff $handoff --out $out --coordinate-evidence $null
+# 1) 准入（带坐标依据，结论才是 ready_for_import）
+& $py scripts/admission_report.py --handoff $handoff --json "$out\admission.json" --md "$out\admission.md" --coordinate-evidence $evidence
 
-# 2) 导出 + 建库
-& $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\staging" --mode staging --sqlite "$out\staging.db"
+# 2) 导出 + 建库（ready 是 APP 能读的那份）
+& $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\ready" --mode ready --coordinate-evidence $evidence --sqlite "$out\ready.db"
+& $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\staging" --mode staging --skip-sha --sqlite "$out\staging.db"
 
-# 3) 案例映射 + 写库
+# 3) 案例映射 + 写库（复制 ready.db 再写案例）
+Copy-Item "$out\ready.db" "$out\cases.db"
 & $py scripts/build_case_mapping.py --handoff $handoff --out "$out\cases" --sqlite "$out\cases.db"
 ```
 
-把 `staging.db` 复制成 `cases.db` 再跑第三步，就能在一个库里同时看到目录和案例。
 `build_database` 不覆盖已有文件，重复跑请换文件名或先删。
 
 ## 3. 测试
 
 ```powershell
+$env:TEMP = 'D:\python_project\.tmp'   # 否则 pytest/unittest 的临时目录会撞权限
 & $py -m unittest discover -s scripts -p 'test_week2_scripts.py' -v
 ```
 
-18 项：纯函数 13 项（坐标换算、球面面积、点在多边形、摘要、CSV 生成）+ 交接包集成 5 项
-（准入无 fail、结论为 conditional、条数与类别、12 例无缺项）。交接包不存在时集成测试自动跳过，
-`HANDOFF_DIR` 环境变量可以指向别的位置。
+27 项：纯函数 22 项（屏幕坐标→经纬、球面面积、点在多边形、摘要、CSV、行星面↔行星心换算与位移统计）
++ 交接包集成 5 项（准入无 fail、无依据时结论为 conditional、有依据时为 ready、条数与类别、12 例无缺项）。
+交接包不存在时集成测试自动跳过，`HANDOFF_DIR` 环境变量可以指向别的位置。
 
 CI 只跑 `api/tests` 与 `scripts/test_export_catalog.py`，本文件的测试目前是本地跑；
 如果要进 CI，需要把交接包挂成 artifact 或只跑纯函数部分。
@@ -66,5 +70,6 @@ CI 只跑 `api/tests` 与 `scripts/test_export_catalog.py`，本文件的测试�
 | `FileExistsError: Database already exists` | `build_database` 不覆盖 | 换文件名，或先删旧库 |
 | 图幅名报「CTX 网格中无 E-084_N-08」 | 拿 `ctx_grid` 的文件名当图幅名 | 从 shapefile 的 `Name` 字段读 |
 | 案例纬度符号反了 | `native_window_world_m` 的 `y` 向南为正 | `lat = −y·180/(πR)` |
+| 点位整体偏南/北十几公里 | 行星面纬度当成行星心纬度入库 | 走 `mars_latitude` 换算，别只改标签 |
 | `pip install` 卡住无输出 | pip 网络层异常 | 用 `--no-index --find-links` 离线装 |
 | `npm`/`git` 相关命令报 TLS 或执行策略错误 | schannel 异常、PowerShell 脚本受限 | 见第 1 周 `docs/week1/run.md` |

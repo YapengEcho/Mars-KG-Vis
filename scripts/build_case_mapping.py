@@ -1,4 +1,4 @@
-﻿"""Build the first batch of case resource mappings (week 2).
+"""Build the first batch of case resource mappings (week 2).
 
 Maps each suggested case (``06_templates/cases12.todo.json``) to every resource
 the app needs:
@@ -36,6 +36,8 @@ from typing import Any
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
+
+import mars_latitude  # noqa: E402
 
 MARS_RADIUS_M = 3396190.0
 DEG_PER_M = 180.0 / (math.pi * MARS_RADIUS_M)
@@ -124,6 +126,16 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
         window_m = window[2] - window[0]
         meters_per_pixel = window_m / entry["image_size_px"][0]
         bounds = geo_bounds(window)
+        # Both the catalog and the recorded crop windows use planetographic
+        # latitude (window centres match catalog latitudes to a 0.002 deg median,
+        # far too close to be a convention mismatch), so convert every latitude
+        # we publish to planetocentric.
+        bounds = {
+            "lonMin": bounds["lonMin"],
+            "lonMax": bounds["lonMax"],
+            "latMin": round(mars_latitude.planetographic_to_planetocentric(bounds["latMin"]), 6),
+            "latMax": round(mars_latitude.planetographic_to_planetocentric(bounds["latMax"]), 6),
+        }
         center_lon = (bounds["lonMin"] + bounds["lonMax"]) / 2
         center_lat = (bounds["latMin"] + bounds["latMax"]) / 2
 
@@ -167,7 +179,8 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
                     "recordIndex0": index[source_id]["point_record_index0"],
                     "rawType": index[source_id]["point_type"],
                     "longitude": round(point.points[0][0], 7),
-                    "latitude": round(point.points[0][1], 7),
+                    "latitude": round(mars_latitude.planetographic_to_planetocentric(point.points[0][1]), 7),
+                    "latitudeSource": round(point.points[0][1], 7),
                 },
                 "polygon": {
                     "assetId": f"geometry-polygon-{source_id:04d}",
@@ -198,6 +211,7 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
             "notes": [
                 "案例标签来自老师给出的编目，本包未做独立判别",
                 "标题为占位，说明留待第 3 周撰写",
+                "纬度为行星心纬度：源清单与取图框为行星图形纬度，按 IAU 2000 椭球换算，原始值见 latitudeSource",
             ],
         }
         if problem:
@@ -211,6 +225,7 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
             "catalog": str(handoff / "01_catalog" / "mars_landslides.json"),
             "casesTemplate": str(cases_file),
             "paper": {"title": PAPER_TITLE, "url": PAPER_URL},
+            "latitudeConversion": mars_latitude.describe(),
         },
         "documents": [
             {

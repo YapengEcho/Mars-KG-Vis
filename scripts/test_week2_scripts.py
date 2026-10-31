@@ -1,4 +1,4 @@
-﻿"""Tests for the week-2 scripts.
+"""Tests for the week-2 scripts.
 
 Pure functions run everywhere; the integration checks need the teacher's handoff
 package and are skipped when ``HANDOFF_DIR`` (or the default path) is missing.
@@ -202,6 +202,64 @@ class HandoffIntegrationTest(unittest.TestCase):
             self.assertTrue(case["needsExpertConfirmation"])
             self.assertTrue(case["preview"]["sha256"])
             self.assertLess(case["highResolution"]["latMin"], case["highResolution"]["latMax"])
+
+    def test_verdict_is_ready_with_evidence(self) -> None:
+        report = admission_report.run(HANDOFF, check_sha=False, coordinate_evidence="unit-test evidence")
+        self.assertEqual(report["verdict"], "ready_for_import")
+        convention = [check for check in report["checks"] if check["id"] == "coords.latitude_convention"]
+        self.assertEqual(len(convention), 1)
+        self.assertEqual(convention[0]["status"], "pass")
+
+
+class LatitudeConversionTest(unittest.TestCase):
+    def test_zero_and_poles_are_fixed_points(self) -> None:
+        for value in (0.0, 90.0, -90.0):
+            self.assertAlmostEqual(admission_report.mars_latitude.planetographic_to_planetocentric(value), value)
+
+    def test_shift_shrinks_the_magnitude(self) -> None:
+        for value in (23.5, 45.0, 77.98, -45.0):
+            converted = admission_report.mars_latitude.planetographic_to_planetocentric(value)
+            self.assertLess(abs(converted), abs(value))
+            self.assertEqual(converted > 0, value > 0)
+
+    def test_sixty_degrees_uses_the_iau_ratio(self) -> None:
+        expected = math.degrees(math.atan((3376200.0 / 3396190.0) ** 2 * math.tan(math.radians(60.0))))
+        self.assertAlmostEqual(
+            admission_report.mars_latitude.planetographic_to_planetocentric(60.0), expected, places=12
+        )
+
+    def test_round_trip(self) -> None:
+        for value in (-70.0, -12.5, 0.0, 33.3, 70.0):
+            back = admission_report.mars_latitude.planetocentric_to_planetographic(
+                admission_report.mars_latitude.planetographic_to_planetocentric(value)
+            )
+            self.assertAlmostEqual(back, value, places=9)
+
+    def test_max_shift_is_about_one_third_of_a_degree(self) -> None:
+        self.assertAlmostEqual(admission_report.mars_latitude.max_shift_deg(), 0.338, places=3)
+
+    def test_convert_latitudes_reports_the_shift(self) -> None:
+        records = [{"id": "ls_0001", "lat": 45.0, "lon": 10.0}, {"id": "ls_0002", "lat": -45.0, "lon": 20.0}]
+        converted, summary = export_checked_catalog.convert_latitudes(records, "planetographic")
+        self.assertEqual(summary["from"], "planetographic")
+        self.assertTrue(summary["applied"])
+        self.assertEqual(summary["recordsShifted"], 2)
+        self.assertAlmostEqual(summary["maxShiftDeg"], 0.337, places=2)
+        self.assertEqual(converted[0]["lat_source"], 45.0)
+        self.assertAlmostEqual(converted[0]["lat"], 44.664, places=2)
+        self.assertEqual(converted[0]["lon"], 10.0)
+        self.assertEqual(converted[0]["id"], "ls_0001")
+
+    def test_convert_latitudes_can_pass_planetocentric_through(self) -> None:
+        records = [{"id": "ls_0001", "lat": 45.0, "lon": 10.0}]
+        converted, summary = export_checked_catalog.convert_latitudes(records, "planetocentric")
+        self.assertFalse(summary["applied"])
+        self.assertEqual(summary["recordsShifted"], 0)
+        self.assertEqual(converted[0]["lat"], 45.0)
+
+    def test_unknown_convention_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            export_checked_catalog.convert_latitudes([], "selenographic")
 
 
 if __name__ == "__main__":
