@@ -24,9 +24,12 @@
 「窗口」是预览裁片的实际边长（1.5× 手工框长边，居中），不是固定 8.6 km；米/像素随目标大小变化，
 每张图都不一样。「CTX 宽/px」是按 6 m/像素铺满该窗口需要的像素数，超过 4000 就要拼相邻图幅。
 
-表里的中心坐标是取图框的中心（本地 CTX 配套投影，行星心）；点位纬度默认与源清单同值、
-不做换算（`--latitude-convention unverified`），原始值与约定记录在
-`cases12.mapping.json` 的 `geometry.point.latitudeSource` / `latitudeConvention` 里，规则见 `export.md` 第 2 节。
+表里的中心坐标是取图框的中心（本地 CTX 配套投影，行星心）；点位纬度默认原样使用、不做换算
+（`--latitude-convention unverified`），约定记录在 `cases12.mapping.json` 的
+`geometry.point.latitudeConvention` 里，规则见 `export.md` 第 2 节。
+
+点位取自点位 shapefile，目录里的经纬度是同一素材的 10 位小数版本，两者最大差 1.4×10⁻⁶ 度（约 0.08 m），
+属于源数据精度差而不是换算差；因此 `latitudeSource` 保留 shapefile 的原值，不做四舍五入。
 
 ## 2. 每个案例映射了什么
 

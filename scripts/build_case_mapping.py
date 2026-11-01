@@ -189,9 +189,10 @@ def build_mapping(
                     "assetId": f"geometry-point-{source_id:04d}",
                     "recordIndex0": index[source_id]["point_record_index0"],
                     "rawType": index[source_id]["point_type"],
-                    "longitude": round(point.points[0][0], 7),
-                    "latitude": round(point_lat, 7),
-                    "latitudeSource": round(point.points[0][1], 7),
+                    # 未经换算时逐位保留源值，避免“原样保留”变成“四舍五入后再保留”
+                    "longitude": point.points[0][0],
+                    "latitude": point_lat,
+                    "latitudeSource": point.points[0][1],
                     "latitudeConvention": convention,
                 },
                 "polygon": {
