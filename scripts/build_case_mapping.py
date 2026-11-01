@@ -64,6 +64,11 @@ def geo_bounds(native_window: list[float]) -> dict[str, float]:
     ``x = lon·R`` but ``y`` grows southwards (screen coordinates), so
     ``lat = −y·DEG_PER_M``. Verified on all 1083 crops: median |Δlat| 0.002°
     versus 15.2° if the sign is dropped, and median |Δlon| 0.002°.
+
+    The window belongs to the local CTX mosaic projection, which is
+    planetocentric, so these bounds are used **as they are** and never follow the
+    catalog latitude conversion: doing that moved 736 catalog points out of their
+    manual frames.
     """
     x0, y0, x1, y1 = native_window
     return {
@@ -91,9 +96,14 @@ def load_ctx_tiles(directory: Path) -> dict[str, tuple[float, float, float, floa
     }
 
 
-def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
+def build_mapping(
+    handoff: Path,
+    cases_file: Path,
+    latitude_convention: str = mars_latitude.DEFAULT_CONVENTION,
+) -> dict[str, Any]:
     import shapefile
 
+    convention = mars_latitude.resolve_convention(latitude_convention)
     catalog = {int(record["source_id"]): record for record in read_json(handoff / "01_catalog" / "mars_landslides.json")}
     index = {int(entry["source_id"]): entry for entry in read_json(handoff / "01_catalog" / "source_id_index.json")}
     images = {int(entry["source_id"]): entry for entry in read_json(handoff / "03_images" / "image_index.json")}
@@ -125,17 +135,10 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
         window = entry["native_window_world_m"]
         window_m = window[2] - window[0]
         meters_per_pixel = window_m / entry["image_size_px"][0]
+        # The crop window comes from the local CTX mosaic projection (planetocentric)
+        # and is published exactly as recorded — it must not follow the catalog
+        # latitude conversion, or points drift out of their own frames.
         bounds = geo_bounds(window)
-        # Both the catalog and the recorded crop windows use planetographic
-        # latitude (window centres match catalog latitudes to a 0.002 deg median,
-        # far too close to be a convention mismatch), so convert every latitude
-        # we publish to planetocentric.
-        bounds = {
-            "lonMin": bounds["lonMin"],
-            "lonMax": bounds["lonMax"],
-            "latMin": round(mars_latitude.planetographic_to_planetocentric(bounds["latMin"]), 6),
-            "latMax": round(mars_latitude.planetographic_to_planetocentric(bounds["latMax"]), 6),
-        }
         center_lon = (bounds["lonMin"] + bounds["lonMax"]) / 2
         center_lat = (bounds["latMin"] + bounds["latMax"]) / 2
 
@@ -150,6 +153,14 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
 
         boundary = boundaries.shape(index[source_id]["boundary_record_index0"])
         point = points.shape(index[source_id]["point_record_index0"])
+        point_lat = mars_latitude.to_export_latitude(point.points[0][1], convention)
+        # The window keeps its own (planetocentric) frame, so a converted point
+        # that leaves it is a sign the convention does not fit this data.
+        if not (
+            bounds["lonMin"] <= point.points[0][0] <= bounds["lonMax"]
+            and bounds["latMin"] <= point_lat <= bounds["latMax"]
+        ):
+            problem.append(f"点位不在取图框内（{convention}）")
         computed_area = spherical_area_km2(boundary.points)
         stored_area = record.get("area") or 0
         if stored_area and abs(computed_area - stored_area) / stored_area > AREA_TOLERANCE:
@@ -179,8 +190,9 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
                     "recordIndex0": index[source_id]["point_record_index0"],
                     "rawType": index[source_id]["point_type"],
                     "longitude": round(point.points[0][0], 7),
-                    "latitude": round(mars_latitude.planetographic_to_planetocentric(point.points[0][1]), 7),
+                    "latitude": round(point_lat, 7),
                     "latitudeSource": round(point.points[0][1], 7),
+                    "latitudeConvention": convention,
                 },
                 "polygon": {
                     "assetId": f"geometry-polygon-{source_id:04d}",
@@ -211,7 +223,9 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
             "notes": [
                 "案例标签来自老师给出的编目，本包未做独立判别",
                 "标题为占位，说明留待第 3 周撰写",
-                "纬度为行星心纬度：源清单与取图框为行星图形纬度，按 IAU 2000 椭球换算，原始值见 latitudeSource",
+                f"纬度约定：{convention}"
+                + ("（已按 IAU 2000 椭球换算，原始值见 latitudeSource）" if convention == "planetographic" else "（原样保留，未换算）"),
+                "取图框来自本地 CTX 配套投影（行星心），按自身坐标定义使用，不随编目换算",
             ],
         }
         if problem:
@@ -225,7 +239,13 @@ def build_mapping(handoff: Path, cases_file: Path) -> dict[str, Any]:
             "catalog": str(handoff / "01_catalog" / "mars_landslides.json"),
             "casesTemplate": str(cases_file),
             "paper": {"title": PAPER_TITLE, "url": PAPER_URL},
-            "latitudeConversion": mars_latitude.describe(),
+            "latitude": mars_latitude.describe(convention),
+            "windowFrame": {
+                "projection": "local CTX mosaic projection",
+                "latitude": "planetocentric",
+                "converted": False,
+                "note": "取图框按自身坐标定义使用，不随编目换算",
+            },
         },
         "documents": [
             {
@@ -307,55 +327,106 @@ def write_table(mapping: dict[str, Any], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _require(conn: Any, table: str, key: str, value: Any) -> None:
+    """Raise :class:`LookupError` when a referenced parent row is missing."""
+    row = conn.execute(f"SELECT 1 FROM {table} WHERE {key} = ?", (value,)).fetchone()
+    if row is None:
+        raise LookupError(f"关联不存在：{table}.{key} = {value!r}")
+
+
 def load_into_sqlite(path: Path, mapping: dict[str, Any], handoff: Path) -> dict[str, int]:
+    """Insert cases, geometry links, documents and citations in one transaction.
+
+    ``PRAGMA foreign_keys`` is enabled for the connection, every referenced
+    parent is checked before insert, ``PRAGMA foreign_key_check`` must come back
+    empty before commit, and any failure rolls the whole batch back so the
+    database never holds a half-written case.
+    """
     import sqlite3
 
     point_shp = "02_vectors/landslide_points/火星滑坡点.shp"
     boundary_shp = "02_vectors/landslide_boundaries/火星滑坡-带边界.shp"
-    with sqlite3.connect(path) as db:
-        for document in mapping["documents"]:
-            db.execute(
-                "INSERT OR REPLACE INTO documents(id,title,url,local_path,citation) VALUES (?,?,?,?,?)",
-                (document["id"], document["title"], document["url"], document["localPath"], document["citation"]),
-            )
-        for case in mapping["cases"]:
-            source_id = case["sourceId"]
-            for kind, shp, geometry in (
-                ("point", point_shp, case["geometry"]["point"]),
-                ("polygon", boundary_shp, case["geometry"]["polygon"]),
-            ):
-                db.execute(
-                    "INSERT OR REPLACE INTO assets(id,landslide_id,kind,path,mime_type,sha256,width,height,metadata_json)"
-                    " VALUES (?,?,?,?,?,?,?,?,?)",
-                    (
-                        f"geometry-{kind}-{source_id:04d}",
-                        case["landslideId"],
-                        kind,
-                        str(handoff / shp),
-                        "application/x-shapefile",
-                        None,
-                        None,
-                        None,
-                        json.dumps({"recordIndex0": geometry["recordIndex0"], "rawType": geometry["rawType"]}, ensure_ascii=False),
-                    ),
+    connection = sqlite3.connect(path, isolation_level=None)
+    try:
+        connection.execute("PRAGMA foreign_keys=ON")
+        if connection.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
+            raise RuntimeError("无法开启 SQLite 外键检查")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            for document in mapping["documents"]:
+                connection.execute(
+                    "INSERT OR REPLACE INTO documents(id,title,url,local_path,citation) VALUES (?,?,?,?,?)",
+                    (document["id"], document["title"], document["url"], document["localPath"], document["citation"]),
                 )
-                db.execute(
-                    "INSERT OR REPLACE INTO geometry_links(landslide_id,kind,asset_id,record_index0,raw_type) VALUES (?,?,?,?,?)",
-                    (case["landslideId"], kind, f"geometry-{kind}-{source_id:04d}", geometry["recordIndex0"], geometry["rawType"]),
+            for case in mapping["cases"]:
+                source_id = case["sourceId"]
+                _require(connection, "landslides", "id", case["landslideId"])
+                _require(connection, "assets", "id", case["imageAssetId"])
+                for kind, shp, geometry in (
+                    ("point", point_shp, case["geometry"]["point"]),
+                    ("polygon", boundary_shp, case["geometry"]["polygon"]),
+                ):
+                    connection.execute(
+                        "INSERT OR REPLACE INTO assets(id,landslide_id,kind,path,mime_type,sha256,width,height,metadata_json)"
+                        " VALUES (?,?,?,?,?,?,?,?,?)",
+                        (
+                            f"geometry-{kind}-{source_id:04d}",
+                            case["landslideId"],
+                            kind,
+                            str(handoff / shp),
+                            "application/x-shapefile",
+                            None,
+                            None,
+                            None,
+                            json.dumps(
+                                {"recordIndex0": geometry["recordIndex0"], "rawType": geometry["rawType"]},
+                                ensure_ascii=False,
+                            ),
+                        ),
+                    )
+                    connection.execute(
+                        "INSERT OR REPLACE INTO geometry_links(landslide_id,kind,asset_id,record_index0,raw_type)"
+                        " VALUES (?,?,?,?,?)",
+                        (
+                            case["landslideId"],
+                            kind,
+                            f"geometry-{kind}-{source_id:04d}",
+                            geometry["recordIndex0"],
+                            geometry["rawType"],
+                        ),
+                    )
+                connection.execute(
+                    "INSERT OR REPLACE INTO cases(id,landslide_id,title,description,image_asset_id,status)"
+                    " VALUES (?,?,?,?,?,?)",
+                    (case["id"], case["landslideId"], case["title"], case["description"], case["imageAssetId"], case["status"]),
                 )
-            db.execute(
-                "INSERT OR REPLACE INTO cases(id,landslide_id,title,description,image_asset_id,status) VALUES (?,?,?,?,?,?)",
-                (case["id"], case["landslideId"], case["title"], case["description"], case["imageAssetId"], case["status"]),
-            )
-            for citation in case["citation"]:
-                db.execute(
-                    "INSERT OR REPLACE INTO case_documents(case_id,document_id,locator) VALUES (?,?,?)",
-                    (case["id"], citation["documentId"], citation["locator"]),
-                )
+                for citation in case["citation"]:
+                    _require(connection, "documents", "id", citation["documentId"])
+                    connection.execute(
+                        "INSERT OR REPLACE INTO case_documents(case_id,document_id,locator) VALUES (?,?,?)",
+                        (case["id"], citation["documentId"], citation["locator"]),
+                    )
+
+            broken = connection.execute("PRAGMA foreign_key_check").fetchall()
+            if broken:
+                raise RuntimeError(f"外键检查未通过：{broken[:5]}")
+            orphan_cases = connection.execute(
+                "SELECT count(*) FROM cases WHERE image_asset_id IS NULL"
+                " OR image_asset_id NOT IN (SELECT id FROM assets)"
+                " OR landslide_id NOT IN (SELECT id FROM landslides)"
+            ).fetchone()[0]
+            if orphan_cases:
+                raise RuntimeError(f"{orphan_cases} 条案例缺少关联记录")
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
         counts = {
-            table: db.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            table: connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
             for table in ("cases", "documents", "case_documents", "geometry_links")
         }
+    finally:
+        connection.close()
     return counts
 
 
@@ -370,6 +441,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cases", type=Path, help="案例建议 JSON；默认交接包 06_templates/cases12.todo.json")
     parser.add_argument("--sqlite", type=Path, help="把案例、几何链接、文献关系写入已存在的数据库")
+    parser.add_argument(
+        "--latitude-convention",
+        choices=mars_latitude.CONVENTIONS,
+        default=mars_latitude.DEFAULT_CONVENTION,
+        help="编目纬度约定：unverified（默认，原样保留）/ planetocentric / planetographic（换算）；"
+        "取图框始终按本地 CTX 投影（行星心）原样使用",
+    )
     args = parser.parse_args(argv)
 
     handoff = args.handoff.expanduser().resolve()
@@ -380,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
     if not cases_file.is_file():
         parser.error(f"找不到案例清单 {cases_file}")
 
-    mapping = build_mapping(handoff, cases_file)
+    mapping = build_mapping(handoff, cases_file, args.latitude_convention)
     out.mkdir(parents=True, exist_ok=True)
     (out / "cases12.mapping.json").write_text(
         json.dumps(mapping, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

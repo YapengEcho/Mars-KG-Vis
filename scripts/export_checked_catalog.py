@@ -7,7 +7,7 @@ gate on top of it:
 1. run ``admission_report`` over the read-only handoff package;
 2. refuse to export when any admission check fails;
 3. refuse ``ready`` output unless ``--coordinate-evidence`` records who approved
-   the latitude convention;
+   the latitude convention *and* ``--latitude-convention`` names a verified one;
 4. write ``manifest.json`` with SHA-256 of inputs and outputs, counts, the
    coordinate evidence and the admission summary.
 
@@ -17,16 +17,22 @@ Modes
              ``release_state = staging`` with latitude ``unverified``.
 ``ready``    ``api.schemas.Catalog`` payload, validated with pydantic.
 
-Both modes write planetocentric latitudes: the handoff is planetographic
-(老师 2026-10-31 确认), so every record goes through
-``scripts/mars_latitude.planetographic_to_planetocentric`` and the shift is
-recorded in ``manifest.json`` under ``latitudeConversion``.
+Latitude
+--------
+The convention is one parameter for admission, export and case mapping, so the
+report and the written numbers cannot disagree. Default is ``unverified``: the
+values are copied as they are and ``ready`` is refused. Passing
+``--latitude-convention planetographic`` additionally converts with
+``scripts/mars_latitude.planetographic_to_planetocentric`` and records the shift
+in ``manifest.json``. See ``mars_latitude`` for why the default is *not* to
+convert: doing so moves 736 catalog points out of their manual crop frames.
 
 Usage
 -----
     python scripts/export_checked_catalog.py --handoff PATH --out DIR --mode staging
     python scripts/export_checked_catalog.py --handoff PATH --out DIR --mode ready \
-        --coordinate-evidence "2026-10-31 老师确认纬度按行星中心纬度使用" --sqlite path.db
+        --coordinate-evidence "2026-11-03 老师确认纬度按行星面使用" \
+        --latitude-convention planetographic --sqlite path.db
 """
 
 from __future__ import annotations
@@ -48,8 +54,8 @@ from export_catalog import build_catalog  # noqa: E402
 import mars_latitude  # noqa: E402
 
 SOURCE_TITLE = "老师提供的火星滑坡编目"
-DEFAULT_VERSION = "mars-landslides-20261031-v2"
-LATITUDE_SOURCE = "planetographic"
+DEFAULT_VERSION = "mars-landslides-20261101-v3"
+DEFAULT_LATITUDE_CONVENTION = mars_latitude.DEFAULT_CONVENTION
 LATITUDE_TARGET = "planetocentric"
 
 
@@ -70,42 +76,45 @@ def records_digest(records: list[dict[str, Any]]) -> str:
 
 def convert_latitudes(
     records: list[dict[str, Any]],
-    convention: str,
+    convention: str = DEFAULT_LATITUDE_CONVENTION,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Return records with planetocentric latitudes plus a conversion summary.
+    """Return the records to publish plus a latitude summary.
 
-    ``convention == "planetocentric"`` keeps the values untouched (records the
-    fact that the source was already planetocentric); ``planetographic`` runs
-    the IAU-2000 conversion and reports how far each record moved.
+    ``planetographic`` runs the IAU-2000 conversion and reports how far each
+    record moved; ``planetocentric`` and ``unverified`` keep the values as
+    authored. Every record keeps its raw value in ``lat_source`` either way.
     """
-    if convention not in ("planetographic", "planetocentric"):
-        raise ValueError(f"未知纬度约定：{convention}")
+    convention = mars_latitude.resolve_convention(convention)
 
     shifts: list[float] = []
     converted: list[dict[str, Any]] = []
     for record in records:
         latitude = float(record["lat"])
-        if convention == "planetographic":
-            target = mars_latitude.planetographic_to_planetocentric(latitude)
-        else:
-            target = latitude
+        target = mars_latitude.to_export_latitude(latitude, convention)
         shifts.append(abs(target - latitude))
         item = dict(record)
-        item["lat"] = round(target, 9)
+        item["lat"] = round(target, 9) if convention == "planetographic" else target
         item["lat_source"] = latitude
         converted.append(item)
 
+    applied = convention == "planetographic"
     summary = {
         "from": convention,
         "to": LATITUDE_TARGET,
-        "applied": convention != LATITUDE_TARGET,
+        "applied": applied,
+        "label": mars_latitude.export_label(convention),
         "records": len(converted),
         "recordsShifted": sum(1 for shift in shifts if shift > 1e-9),
         "maxShiftDeg": round(max(shifts), 6) if shifts else 0.0,
         "maxShiftKm": round((max(shifts) if shifts else 0.0) * mars_latitude.KM_PER_DEGREE, 3),
         "meanShiftDeg": round(sum(shifts) / len(shifts), 6) if shifts else 0.0,
+        "note": (
+            "按 IAU 2000 椭球 (b/a)² 换算为行星心纬度"
+            if applied
+            else "未换算：纬度约定未核实（unverified）或源清单声明为行星心纬度，数值原样保留"
+        ),
     }
-    if convention == "planetographic":
+    if applied:
         summary.update(
             {
                 "ellipsoid": "IAU_2000_Mars",
@@ -176,20 +185,32 @@ def export(
     version: str,
     sqlite_path: Path | None,
     check_sha: bool = True,
-    latitude_convention: str = LATITUDE_SOURCE,
+    latitude_convention: str = DEFAULT_LATITUDE_CONVENTION,
 ) -> dict[str, Any]:
+    convention = mars_latitude.resolve_convention(latitude_convention)
     raw_records = json.loads((handoff / "01_catalog" / "mars_landslides.json").read_text(encoding="utf-8-sig"))
-    records, conversion = convert_latitudes(raw_records, latitude_convention)
+    records, conversion = convert_latitudes(raw_records, convention)
     images = json.loads((handoff / "03_images" / "image_index.json").read_text(encoding="utf-8-sig"))
 
-    admission = admission_report.run(handoff, check_sha=check_sha, coordinate_evidence=coordinate_evidence)
+    admission = admission_report.run(
+        handoff,
+        check_sha=check_sha,
+        coordinate_evidence=coordinate_evidence,
+        latitude_convention=convention,
+    )
     if admission["verdict"] == "blocked":
         raise SystemExit("准入检查存在阻断项，导出中止：" + "、".join(admission["blockers"]))
-    if mode == "ready" and not (coordinate_evidence or "").strip():
-        raise SystemExit(
-            "ready 导出需要 --coordinate-evidence：写明纬度约定由谁、何时核准。"
-            f"当前结论为 {admission['verdict']}。"
-        )
+    if mode == "ready":
+        if not (coordinate_evidence or "").strip():
+            raise SystemExit(
+                "ready 导出需要 --coordinate-evidence：写明纬度约定由谁、何时核准。"
+                f"当前结论为 {admission['verdict']}。"
+            )
+        if convention == "unverified":
+            raise SystemExit(
+                "ready 导出需要 --latitude-convention planetocentric 或 planetographic："
+                "约定未核实时只能出 staging，避免把未核实的坐标标成已核准。"
+            )
 
     if mode == "ready":
         payload: Any = build_catalog(
@@ -230,7 +251,7 @@ def export(
         "coordinateSystem": payload["coordinateSystem"] if isinstance(payload, dict) else {
             "body": "Mars",
             "longitude": "east-positive, -180..180",
-            "latitude": "planetocentric, degrees",
+            "latitude": mars_latitude.export_label(convention),
         },
         "coordinateEvidence": coordinate_evidence,
         "latitudeConversion": conversion,
@@ -254,10 +275,11 @@ def export(
         "notes": [
             "名称按“滑坡 + 编号”回填，说明沿用原始 desc（当前为空），案例文案另行撰写。",
             "imageUrl 留空；预览图通过 assets 表指向本地 train224 目录。",
-            "ready 模式只在提供坐标核准依据时可用；否则仅输出 staging。",
-            f"纬度为行星心纬度：原始清单为{mars_latitude.describe()['from']}，"
-            f"按 (b/a)^2 换算，最大偏移 {conversion['maxShiftDeg']:.4f}°（约 {conversion['maxShiftKm']:.1f} km）。",
-            "staging 的 payload 同样已换算为行星心纬度；api.sqlite_store 的 raw 模式仍把 metadata.latitude 记作 unverified，"
+            "ready 模式需要坐标依据 + 已核实的纬度约定；否则只输出 staging，坐标原样保留。",
+            f"纬度约定：{convention}；{'已按 (b/a)^2 换算为行星心纬度，最大偏移 %.4f°（约 %.1f km）' % (conversion['maxShiftDeg'], conversion['maxShiftKm']) if conversion['applied'] else '未做换算，数值与源清单一致'}。",
+            "不默认换算的原因：1083 个裁片的人工框在本地 CTX 配套投影（行星心）下生成，"
+            "把编目按行星面→行星心换算会让 736 个原本在框内的点移出框外。",
+            "staging 的 payload 与源清单同口径；api.sqlite_store 的 raw 模式把 metadata.latitude 记作 unverified，"
             "表示“未核准发布”，不是坐标系未知。",
         ],
     }
@@ -280,9 +302,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--coordinate-evidence", help="核准纬度约定的依据；ready 模式必填")
     parser.add_argument(
         "--latitude-convention",
-        choices=("planetographic", "planetocentric"),
-        default=LATITUDE_SOURCE,
-        help="原始清单的纬度约定（默认 planetographic，按 IAU 2000 椭球换算为行星心纬度）",
+        choices=mars_latitude.CONVENTIONS,
+        default=DEFAULT_LATITUDE_CONVENTION,
+        help="源清单的纬度约定：unverified（默认，原样保留）/ planetocentric（原样保留）/ "
+        "planetographic（按 IAU 2000 椭球换算为行星心纬度）",
     )
     parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument("--sqlite", type=Path, help="同时构建 SQLite；目标文件必须尚不存在")
@@ -308,11 +331,15 @@ def main(argv: list[str] | None = None) -> int:
         f"byType={manifest['byType']} verdict={manifest['admission']['verdict']}"
     )
     conversion = manifest["latitudeConversion"]
-    print(
-        f"纬度换算：{conversion['from']} -> {conversion['to']}，"
-        f"移动 {conversion['recordsShifted']} 条，最大 {conversion['maxShiftDeg']:.4f}°"
-        f"（约 {conversion['maxShiftKm']:.1f} km）"
-    )
+    if conversion["applied"]:
+        latitude_line = (
+            f"纬度换算：{conversion['from']} -> {conversion['to']}，"
+            f"移动 {conversion['recordsShifted']} 条，最大 {conversion['maxShiftDeg']:.4f}°"
+            f"（约 {conversion['maxShiftKm']:.1f} km）"
+        )
+    else:
+        latitude_line = f"纬度：{conversion['from']}，数值原样保留（未换算）"
+    print(latitude_line)
     if manifest["sqlite"]:
         print(f"SQLite：{manifest['sqlite']}")
     return 0

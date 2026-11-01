@@ -24,8 +24,9 @@
 「窗口」是预览裁片的实际边长（1.5× 手工框长边，居中），不是固定 8.6 km；米/像素随目标大小变化，
 每张图都不一样。「CTX 宽/px」是按 6 m/像素铺满该窗口需要的像素数，超过 4000 就要拼相邻图幅。
 
-表里的中心坐标是**行星心纬度**（已换算）；源清单与取图框都是行星面纬度，原值在
-`cases12.mapping.json` 的 `geometry.point.latitudeSource` 里，换算规则见 `export.md` 第 2 节。
+表里的中心坐标是取图框的中心（本地 CTX 配套投影，行星心）；点位纬度默认与源清单同值、
+不做换算（`--latitude-convention unverified`），原始值与约定记录在
+`cases12.mapping.json` 的 `geometry.point.latitudeSource` / `latitudeConvention` 里，规则见 `export.md` 第 2 节。
 
 ## 2. 每个案例映射了什么
 
@@ -47,9 +48,12 @@
 
 ## 3. 生成时做的校验
 
-每条案例都会核对：目录记录存在、裁片文件存在且 SHA-256 与索引一致、裁片记录的图幅名在 CTX 网格里、
-案例中心落在该图幅范围内、边界球面面积与目录 `area` 相对偏差 ≤0.5%。任一条不过就进 `issues`
+每条案例都会核对：目录记录存在、裁片文件存在、裁片记录的图幅名在 CTX 网格里、案例中心落在该图幅范围内、
+点位落在自身取图框内、边界球面面积与目录 `area` 相对偏差 ≤0.5%。任一条不过就进 `issues`
 并以退出码 1 结束。本周 12 例全部通过（0 issues）。
+
+「点位落在自身取图框内」这一项同时是纬度约定的旁证：用 `--latitude-convention planetographic` 跑时，
+点位按行星面换算后会整体南移约 0.1°（3–7 km），多数会跑出自己的框。
 
 排查过程中修正过两个口径问题，README 里没有写、容易再踩：
 
@@ -57,8 +61,8 @@
    不能拿文件名当图幅名。
 2. `image_index.json` 的 `native_window_world_m` 是屏幕坐标：`x = lon·R`，但 `y` 向南为正，所以
    `lat = −y·(180/πR)`。全量 1083 张验证：按此换算中位偏差 0.002 度，去掉负号则中位偏差 15.2 度。
-   这条 0.002 度的中位偏差同时说明**取图框与目录用的是同一套纬度约定（行星面）**，因此案例里的
-   取图框也随目录一起换算成行星心纬度；不换算的话 40 km 窗口里点位会偏出画面。
+   取图框来自本地 CTX 配套投影，**明确是行星心纬度**，因此按自身定义原样使用，**不跟随编目换算**；
+   硬把框也换算一次会让 736 个原本在框内的点跑出去（见 `admission.md` 第 3 节）。
 
 ## 4. 高分辨率申请
 
@@ -76,9 +80,14 @@ HiRISE 0.3 m/像素在这个窗口下宽度会到 1.4–14.8 万像素，只有�
 python scripts/build_case_mapping.py --handoff <交接包> --out out --sqlite out/ready.db
 ```
 
-要写进 **ready 库**（APP 能读的那份）。`build_database` 一次只能建新库，所以流程是：先
-`export_checked_catalog.py --mode ready --sqlite ready.db` 建库，再把 `ready.db` 复制成 `cases.db`
-写案例，或者直接对 `ready.db` 追加（`INSERT OR REPLACE`，可重复执行）。
+要写进一个**已存在的库**（staging 或 ready 都行，APP 能读的是 ready）。`build_database` 一次只能建新库，
+所以流程是：先用 `export_checked_catalog.py --sqlite <库>` 建库，再把库复制一份或直接对同一个库追加
+（`INSERT OR REPLACE`，可重复执行）。
+
+写库在单个事务里完成：连接开 `PRAGMA foreign_keys=ON`（开不了就报 `无法开启 SQLite 外键检查`），
+每条案例先确认 `landslides` / `assets` / `documents` 里的父记录存在（缺了抛
+`LookupError('关联不存在：…')`），提交前跑 `PRAGMA foreign_key_check` 必须为空、并检查没有
+`image_asset_id` 悬空的案例，任何一步失败整批 `ROLLBACK`，库里不会留下半套案例。
 会插入 `cases` 12 行、`documents` 1 行（论文）、`case_documents` 12 行（每例一条定位）、
 `geometry_links` 24 行（点位 + 边界），并顺带建 24 条 `assets`（`geometry-point-XXXX`、
 `geometry-polygon-XXXX`，`mime_type=application/x-shapefile`，`metadata_json` 里带记录号与原始类型）。

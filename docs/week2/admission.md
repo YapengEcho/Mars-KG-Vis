@@ -16,7 +16,7 @@
 | | `types.point_agreement` | 点位属性表 `类型` 与目录 `type` 逐条一致 |
 | 坐标 | `coords.range` | 经度 −180..180，纬度 −90..90 |
 | | `coords.duplicates` | 无重复经纬度对 |
-| | `coords.latitude_convention` | 记录源纬度约定（行星面）与换算后的位移量（条数、最大角度/公里） |
+| | `coords.latitude_convention` | 记录源纬度约定（默认 unverified，原样保留）；显式声明 planetographic 时才报告换算位移量，并附人工框越界对照 |
 | | `coords.dms` | 度分秒文本与数值字段一致（容差 0.0000001 度） |
 | | `coords.point_vs_catalog` | 点位几何与目录 `lon`/`lat` 一致（容差 0.000005 度 ≈ 0.3 m） |
 | | `coords.point_in_polygon` | 点位落在自己的边界内；越界按比例判 warn（≤0.5% 记录）或 fail |
@@ -35,7 +35,7 @@
 
 ## 2. 本周结果：18 项 pass，4 项 warn，0 项 fail
 
-结论 `ready_for_import`（`--coordinate-evidence` 已记录老师对纬度约定的确认），`blockers` 为空。四项警告：
+结论 `conditional_pending_coordinate_verification`（纬度约定尚无书面依据，导出停在 staging），`blockers` 为空。四项警告：
 
 1. `coords.dms`（93 条）：纬度为 0–1 度之间时，导出的度分秒文本丢了负号
    （例 `source_id 686`：数值 `-0.425023`，文本 `0°25′30.08″`）。数值字段正确，导入时以数值为准。
@@ -47,34 +47,42 @@
 4. `missing.images`（1888 条缺）：2971 条里 1083 条有裁片（SL 531/1787、SP 94/321、FL 15/50、
    CL 443/813）。只有这 1083 条能直接进图鉴，其余需要另外取图。
 
-## 3. 坐标约定：已核准为行星面纬度，导出时换算
+## 3. 坐标约定：经度已核，纬度未核
 
 - 经度已核实：东经为正、−180..180，2444 条负值，与论文图 2 的全球分布一致。
-- **纬度：2026-10-31 老师确认按行星面纬度（planetographic）使用**，依据原样写入
-  `admission.json` 的 `coordinate_evidence` 与导出清单的 `coordinateEvidence`。
-- 此前只有间接线索（面积/周长由 ArcGIS 用 `GCS_Mars` 球体算出、原始 `.prj` 误标 `GCS_WGS_1984`），
-  所以第 1 周把它记成「待核准」；现在这条待办可以关掉，但**换算要做，不能只改标签**。
+- **纬度：未核准。** 论文正文没写、`.prj` 误标 `GCS_WGS_1984`、面积用球体算也不反推输入约定，
+  目前没有任何一手材料能证明是行星面还是行星心纬度。
+- 因此默认 `--latitude-convention unverified`：**保留原坐标、不做换算**，准入结论只能是
+  `conditional_pending_coordinate_verification`，导出只能出 `staging`。
 
-`api/schemas.CoordinateSystem` 只接受 `planetocentric, degrees`，公开底图也是行星心纬度，
-因此 `scripts/export_checked_catalog.py` 在导出边界统一换算：
+为什么不「先按行星面换算」：对照 1083 个人工取图框（框在本地 CTX 配套投影下，行星心）——
 
-| 项 | 值 |
-|---|---|
-| 公式 | `lat_c = atan((b/a)² · tan(lat_g))`，IAU 2000 火星椭球 b/a = 3376200/3396190 |
-| 全表影响 | 2971 条全部位移，最大 0.3382°（约 20 km），平均 0.10° |
-| 记录位置 | `manifest.json` 的 `latitudeConversion`；案例里保留原始值 `latitudeSource` |
-| 未换算的代价 | 点位整体偏南/北最多 20 km，在 40 km 宽的裁片里直接跑出画面 |
+| 判据 | 原值 | 换算后 |
+|---|---|---|
+| 落在所属边界多边形内 | 越界 4 / 2971 | 越界 2271 / 2971 |
+| 落在人工取图框内 | 越界 3 / 1083 | 越界 739 / 1083（**736 个原本在框内的点被移出**） |
 
-准入脚本把这个换算计入 `coords.latitude_convention` 一项，所以报告里能直接看到位移量；
-`staging` 与 `ready` 两种导出都换算，避免两个库的点位对不上。
+`scripts/compare_latitude_conventions.py` 可复现这张表。等拿到可追溯的书面依据后：
+
+- `--latitude-convention planetographic` 会按 IAU 2000 椭球 `(b/a)²` 换算（`lat_c = atan((b/a)²·tan(lat_g))`），
+  2971 条全部位移、最大 0.3382°（约 20 km），位移量写进 `manifest.json` 的 `latitudeConversion`；
+- `--latitude-convention planetocentric` 表示源清单本身就是行星心纬度，数值原样发布；
+- 两种情况都必须同时给 `--coordinate-evidence`，`ready` 才会放行。
+
+准入脚本用与外导**同一个** `latitude_convention` 参数，报告里的 `latitude_convention`、
+`latitude`、`manual_boxes` 三处与分析结果一致，不会出现「报告按 A 算、写库按 B 算」。
 
 ## 4. 复现
 
 ```bash
-python scripts/admission_report.py --handoff <交接包> --json admission.json --md admission.md \
-  --coordinate-evidence "2026-10-31 老师确认：编目纬度按行星面纬度（planetographic）使用"
+# 默认口径：纬度原样保留，只出 staging
+python scripts/admission_report.py --handoff <交接包> --json admission.json --md admission.md
+python scripts/export_checked_catalog.py --handoff <交接包> --out <目录> --mode staging --sqlite staging.db
+
+# 拿到书面依据后才能出 ready（二选一：planetocentric 表示源本身就是行星心）
 python scripts/export_checked_catalog.py --handoff <交接包> --out <目录> --mode ready \
-  --coordinate-evidence "同上" --sqlite ready.db
+  --latitude-convention planetographic --coordinate-evidence "2026-11-03 老师确认：按行星面纬度使用" \
+  --sqlite ready.db
 ```
 
 `api/sqlite_store.py` 的读取函数仍会拒绝 `release_state=staging` 的库，`ready` 库才能被 APP 读取。

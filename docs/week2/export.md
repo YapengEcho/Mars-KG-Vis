@@ -2,41 +2,53 @@
 
 脚本：`scripts/export_checked_catalog.py`。它复用后台已有的 `scripts/export_catalog.py`
 （记录级契约与字段校验、原子写入）和 `api/sqlite_store.build_database`（建库），
-自己只加四件事：准入闸门、清单（manifest）、staging/ready 的显式区分、纬度换算。
+自己只加四件事：准入闸门、清单（manifest）、staging/ready 的显式区分、纬度参数透传。
 
 ## 1. 两种模式
 
 | | `--mode staging`（默认） | `--mode ready` |
 |---|---|---|
 | 记录正文 | 原始字段直通，`name` 保留空串 | `build_catalog` 校验并回填 `name`、`summary` |
-| 坐标系 | 经度 `east-positive, -180..180`，纬度已换算为行星心纬度 | 纬度必须为 `planetocentric, degrees`（已换算，可强校验） |
+| 坐标系 | 经度 `east-positive, -180..180`，纬度 `unverified`（原样保留） | 纬度必须为 `planetocentric, degrees`；换算与否由 `--latitude-convention` 决定 |
 | 数据库 `release_state` | `staging` | `ready` |
-| 前置条件 | 准入无 `fail` | 准入无 `fail` **且** 提供 `--coordinate-evidence` |
+| 前置条件 | 准入无 `fail` | 准入无 `fail` **且** 提供 `--coordinate-evidence` **且** 约定不是 `unverified` |
 | 可被 APP 读取 | 否（`load_sqlite_catalog` 会抛错） | 是 |
 
 不带 `--coordinate-evidence` 直接跑 `--mode ready` 会以退出码 1 拒绝，并提示
-「ready 导出需要 --coordinate-evidence」。
+「ready 导出需要 --coordinate-evidence」；带了依据但仍是 `--latitude-convention unverified` 也会被拒绝，
+提示「约定未核实时只能出 staging」。
 
-## 2. 纬度换算（两种模式都做）
+## 2. 纬度参数（默认不换算）
 
-原始清单是**行星面纬度**（2026-10-31 老师确认），契约与底图都要**行星心纬度**：
+纬度约定目前**未核准**：论文没写、`.prj` 误标、面积用球体算也不反推输入约定。因此默认
+`--latitude-convention unverified`——**数值原样保留、不做换算**，导出只能出 `staging`。
 
-- 实现：`scripts/mars_latitude.py`，`lat_c = atan((b/a)² · tan(lat_g))`，IAU 2000 火星椭球，`(b/a)² = 0.98826361`。
-- 影响：2971 条全部位移，最大 0.3382°（约 20 km），平均 0.10°。
-- 记录：`manifest.json` 的 `latitudeConversion`（`from`/`to`/`applied`/`recordsShifted`/`maxShiftDeg`/`maxShiftKm`/椭球与公式）。
-- 原值：目录里不保留（契约不接受额外字段），需要回溯时从交接包 `mars_landslides.json` 读；案例 JSON 里另存 `latitudeSource`。
-- 开关：`--latitude-convention planetocentric` 可关闭换算（仅当拿到的新清单本身就是行星心纬度）。
+三个脚本（准入、导出、案例映射）共用这一个参数，报告与写库口径一致：
 
-> `api.sqlite_store` 的 raw 模式仍把 `metadata.latitude` 写成 `unverified`，含义是「未核准发布」，
-> 不是「坐标系未知」。这一点已在交付说明里注明，后续可请后台改成 `planetocentric`。
+| 取值 | 行为 | 能否 ready |
+|---|---|---|
+| `unverified`（默认） | 原样保留，`coordinateSystem.latitude = unverified` | 否 |
+| `planetocentric` | 原样保留（源清单本身就是行星心纬度） | 是（需依据） |
+| `planetographic` | 按 IAU 2000 椭球换算为行星心纬度 | 是（需依据） |
+
+换算实现：`scripts/mars_latitude.py`，`lat_c = atan((b/a)² · tan(lat_g))`，`(b/a)² = 0.98826361`；
+影响 2971 条全部位移、最大 0.3382°（约 20 km）、平均 0.10°，位移量写进 `manifest.json` 的
+`latitudeConversion`（`from`/`to`/`applied`/`recordsShifted`/`maxShiftDeg`/`maxShiftKm`）。
+
+**为什么默认不换算**：对照 1083 个人工取图框（本地 CTX 投影，行星心），换算会让
+736 个原本在框内的点移出框外（越界 3 → 739）；边界多边形越界则从 4 涨到 2271。
+`scripts/compare_latitude_conventions.py` 可复现。
+
+> `api.sqlite_store` 的 raw 模式把 `metadata.latitude` 写成 `unverified`，含义是「未核准发布」，
+> 与 `--latitude-convention unverified` 是同一层意思。
 
 ## 3. 产出
 
 | 文件 | 内容 |
 |---|---|
-| `catalog.json` | 2971 条记录，符合 `api/schemas.py` 的 `Catalog`（ready 模式会强校验） |
+| `catalog.json` | 2971 条记录；`ready` 模式符合 `api/schemas.py` 的 `Catalog`（强校验） |
 | `admission.json` / `admission.md` | 本次导出前的准入结果，原样留存 |
-| `manifest.json` | 版本、模式、时间、条数、类别分布、有图条数、记录摘要、输入与输出的 SHA-256、坐标声明、纬度换算、准入结论、数据库结果、备注 |
+| `manifest.json` | 版本、模式、时间、条数、类别分布、有图条数、记录摘要、输入与输出的 SHA-256、坐标声明、纬度参数与换算、准入结论、数据库结果、备注 |
 | `*.db`（可选） | 由 `build_database` 生成，只含 `metadata`/`sources`/`landslides`/`assets` |
 
 `manifest.json` 里 `recordsSha256` 是对「按 id 排序后的记录列表」做的规范化摘要，
@@ -65,15 +77,16 @@
 
 ```bash
 # 只做检查
-python scripts/admission_report.py --handoff <交接包> --json out/admission.json --md out/admission.md \
-  --coordinate-evidence "2026-10-31 老师确认：编目纬度按行星面纬度（planetographic）使用"
+python scripts/admission_report.py --handoff <交接包> --json out/admission.json --md out/admission.md
 
-# staging 导出（含 SQLite）
+# staging 导出（含 SQLite），默认口径
 python scripts/export_checked_catalog.py --handoff <交接包> --out out/staging --mode staging --sqlite out/staging.db
 
-# ready 导出（含 SQLite），这是 APP 能读的那一份
+# ready 导出（含 SQLite），这是 APP 能读的那一份；需依据 + 已核实的约定
 python scripts/export_checked_catalog.py --handoff <交接包> --out out/ready --mode ready \
-  --coordinate-evidence "同上" --sqlite out/ready.db
+  --latitude-convention planetographic \
+  --coordinate-evidence "2026-11-03 老师确认：编目纬度按行星面纬度（planetographic）使用" \
+  --sqlite out/ready.db
 ```
 
-默认 `--version mars-landslides-20261031-v2`。
+默认 `--version mars-landslides-20261101-v3`。

@@ -32,18 +32,23 @@ D:\python_project\.venv-api\Scripts\python.exe -c "import fastapi, pydantic, sha
 $py = 'D:\python_project\.venv-api\Scripts\python.exe'
 $handoff = 'D:\python_project\teng_jiajie_week1_20261024'
 $out = 'D:\python_project\.tmp\week2'
-$evidence = '2026-10-31 老师确认：编目纬度按行星面纬度（planetographic）使用'
+# 1) 准入（默认 unverified：纬度原样保留，结论为 conditional）
+& $py scripts/admission_report.py --handoff $handoff --json "$out\admission.json" --md "$out\admission.md"
 
-# 1) 准入（带坐标依据，结论才是 ready_for_import）
-& $py scripts/admission_report.py --handoff $handoff --json "$out\admission.json" --md "$out\admission.md" --coordinate-evidence $evidence
-
-# 2) 导出 + 建库（ready 是 APP 能读的那份）
-& $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\ready" --mode ready --coordinate-evidence $evidence --sqlite "$out\ready.db"
+# 2) 导出 + 建库（staging 即可交付；默认基线就是它）
 & $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\staging" --mode staging --skip-sha --sqlite "$out\staging.db"
 
-# 3) 案例映射 + 写库（复制 ready.db 再写案例）
-Copy-Item "$out\ready.db" "$out\cases.db"
+# 3) 案例映射 + 写库（复制库再写案例）
+Copy-Item "$out\staging.db" "$out\cases.db"
 & $py scripts/build_case_mapping.py --handoff $handoff --out "$out\cases" --sqlite "$out\cases.db"
+
+# 4) 只有拿到可追溯的纬度依据后，才允许 ready
+$evidence = '2026-11-03 老师确认：编目纬度按行星面纬度（planetographic）使用'
+& $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\ready" --mode ready `
+    --latitude-convention planetographic --coordinate-evidence $evidence --sqlite "$out\ready.db"
+
+# 5) 换算影响（不写库，只打印越界对比）
+& $py scripts/compare_latitude_conventions.py --handoff $handoff
 ```
 
 `build_database` 不覆盖已有文件，重复跑请换文件名或先删。
@@ -55,8 +60,10 @@ $env:TEMP = 'D:\python_project\.tmp'   # 否则 pytest/unittest 的临时目录�
 & $py -m unittest discover -s scripts -p 'test_week2_scripts.py' -v
 ```
 
-27 项：纯函数 22 项（屏幕坐标→经纬、球面面积、点在多边形、摘要、CSV、行星面↔行星心换算与位移统计）
-+ 交接包集成 5 项（准入无 fail、无依据时结论为 conditional、有依据时为 ready、条数与类别、12 例无缺项）。
+35 项：纯函数 22 项（屏幕坐标→经纬、球面面积、点在多边形、摘要、CSV、行星面↔行星心换算与位移统计）
++ 交接包集成 9 项（准入无 fail、默认无依据时结论为 conditional、有依据且有约定时为 ready、
+默认导出不改纬度、人工框 736 点移出、取图框保持自身坐标、条数与类别、12 例无缺项）
++ 外键 4 项（完整映射可写、缺父记录回滚、孤儿案例被拒）。
 交接包不存在时集成测试自动跳过，`HANDOFF_DIR` 环境变量可以指向别的位置。
 
 CI 只跑 `api/tests` 与 `scripts/test_export_catalog.py`，本文件的测试目前是本地跑；
@@ -71,5 +78,7 @@ CI 只跑 `api/tests` 与 `scripts/test_export_catalog.py`，本文件的测试�
 | 图幅名报「CTX 网格中无 E-084_N-08」 | 拿 `ctx_grid` 的文件名当图幅名 | 从 shapefile 的 `Name` 字段读 |
 | 案例纬度符号反了 | `native_window_world_m` 的 `y` 向南为正 | `lat = −y·180/(πR)` |
 | 点位整体偏南/北十几公里 | 行星面纬度当成行星心纬度入库 | 走 `mars_latitude` 换算，别只改标签 |
+| 736 个点跑出人工取图框 | 在对纬度约定没有依据时默认做了行星面→行星心换算 | 默认 `unverified` 不换算；对照 `compare_latitude_conventions.py` |
+| 案例写库只写了一半 | 没开外键、父记录不存在时静默插入 | 已开 `PRAGMA foreign_keys=ON` + `foreign_key_check` + 单事务回滚 |
 | `pip install` 卡住无输出 | pip 网络层异常 | 用 `--no-index --find-links` 离线装 |
 | `npm`/`git` 相关命令报 TLS 或执行策略错误 | schannel 异常、PowerShell 脚本受限 | 见第 1 周 `docs/week1/run.md` |

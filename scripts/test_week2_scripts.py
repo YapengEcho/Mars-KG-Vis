@@ -12,6 +12,7 @@ import json
 import math
 import os
 from pathlib import Path
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -23,6 +24,7 @@ import admission_report  # noqa: E402
 import build_case_mapping  # noqa: E402
 import export_checked_catalog  # noqa: E402
 
+REPO = SCRIPTS.parent
 HANDOFF = Path(os.environ.get("HANDOFF_DIR", r"D:\python_project\teng_jiajie_week1_20261024"))
 R = build_case_mapping.MARS_RADIUS_M
 DEG = build_case_mapping.DEG_PER_M
@@ -204,11 +206,55 @@ class HandoffIntegrationTest(unittest.TestCase):
             self.assertLess(case["highResolution"]["latMin"], case["highResolution"]["latMax"])
 
     def test_verdict_is_ready_with_evidence(self) -> None:
-        report = admission_report.run(HANDOFF, check_sha=False, coordinate_evidence="unit-test evidence")
+        report = admission_report.run(
+            HANDOFF,
+            check_sha=False,
+            coordinate_evidence="unit-test evidence",
+            latitude_convention="planetocentric",
+        )
         self.assertEqual(report["verdict"], "ready_for_import")
         convention = [check for check in report["checks"] if check["id"] == "coords.latitude_convention"]
         self.assertEqual(len(convention), 1)
         self.assertEqual(convention[0]["status"], "pass")
+
+    def test_verdict_stays_conditional_without_a_verified_convention(self) -> None:
+        report = admission_report.run(HANDOFF, check_sha=False, coordinate_evidence="unit-test evidence")
+        self.assertEqual(report["verdict"], "conditional_pending_coordinate_verification")
+        self.assertEqual(report["latitude_convention"], "unverified")
+
+    def test_default_export_keeps_the_source_latitudes(self) -> None:
+        catalog = {int(record["source_id"]): record for record in admission_report.read_json(
+            HANDOFF / "01_catalog" / "mars_landslides.json"
+        )}
+        converted, summary = export_checked_catalog.convert_latitudes(list(catalog.values()))
+        self.assertFalse(summary["applied"])
+        self.assertEqual(summary["from"], "unverified")
+        self.assertEqual(summary["recordsShifted"], 0)
+        for record in converted:
+            self.assertEqual(record["lat"], catalog[int(record["source_id"])]["lat"])
+
+    def test_manual_boxes_show_736_points_move_out(self) -> None:
+        catalog = admission_report.read_json(HANDOFF / "01_catalog" / "mars_landslides.json")
+        evidence = admission_report.manual_box_evidence(HANDOFF, catalog, "unverified")
+        self.assertIsNotNone(evidence)
+        self.assertEqual(evidence["boxes"], 1083)
+        self.assertEqual(evidence["outsideNow"], 3)
+        self.assertEqual(evidence["outsideIfConverted"], 739)
+        self.assertEqual(evidence["movedOutByConversion"], 736)
+
+    def test_case_windows_keep_their_own_frame(self) -> None:
+        mapping = build_case_mapping.build_mapping(HANDOFF, HANDOFF / "06_templates" / "cases12.todo.json")
+        self.assertEqual(mapping["source"]["latitude"]["from"], "unverified")
+        self.assertFalse(mapping["source"]["windowFrame"]["converted"])
+        for case in mapping["cases"]:
+            raw = build_case_mapping.read_json(HANDOFF / "03_images" / "image_index.json")
+            entry = next(item for item in raw if int(item["source_id"]) == case["sourceId"])
+            expected = build_case_mapping.geo_bounds(entry["native_window_world_m"])
+            self.assertEqual(case["highResolution"]["latMin"], expected["latMin"])
+            self.assertEqual(case["highResolution"]["latMax"], expected["latMax"])
+            latitude = case["highResolution"]
+            self.assertLessEqual(latitude["latMin"], case["geometry"]["point"]["latitude"])
+            self.assertGreaterEqual(latitude["latMax"], case["geometry"]["point"]["latitude"])
 
 
 class LatitudeConversionTest(unittest.TestCase):
@@ -260,6 +306,92 @@ class LatitudeConversionTest(unittest.TestCase):
     def test_unknown_convention_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             export_checked_catalog.convert_latitudes([], "selenographic")
+
+
+class SqliteLinkTest(unittest.TestCase):
+    """Foreign keys are enforced and a failed batch leaves no partial rows."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.database = Path(self.tmp.name) / "cases.db"
+        schema = REPO / "api" / "db" / "schema.sql"
+        connection = sqlite3.connect(self.database)
+        try:
+            connection.executescript(schema.read_text(encoding="utf-8"))
+            connection.execute("INSERT INTO sources(id,title) VALUES('src','test')")
+            connection.execute(
+                "INSERT INTO landslides(id,source_id,name,type,raw_type,longitude,latitude,source_ref,is_demo,raw_record_json)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                ("ls_0001", 1, "滑坡 1", "SL", "SL", 10.0, 20.0, "src", 0, "{}"),
+            )
+            connection.execute(
+                "INSERT INTO assets(id,landslide_id,kind,path) VALUES(?,?,?,?)",
+                ("train224-1", "ls_0001", "image", "03_images/train224/SL/slide_00001.png"),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _mapping(self, landslide_id: str = "ls_0001", document_id: str = "doc-inventory-paper") -> dict:
+        return {
+            "documents": [
+                {
+                    "id": "doc-inventory-paper",
+                    "title": "paper",
+                    "url": "https://doi.org/10.13203/j.whugis20250300",
+                    "localPath": None,
+                    "citation": "citation",
+                }
+            ],
+            "cases": [
+                {
+                    "id": "case-ls-0001",
+                    "sourceId": 1,
+                    "landslideId": landslide_id,
+                    "title": "SL 案例",
+                    "description": "",
+                    "status": "draft",
+                    "imageAssetId": "train224-1",
+                    "geometry": {
+                        "point": {"assetId": "geometry-point-0001", "recordIndex0": 0, "rawType": "SL"},
+                        "polygon": {"assetId": "geometry-polygon-0001", "recordIndex0": 0, "rawType": "SL"},
+                    },
+                    "citation": [{"documentId": document_id, "locator": "PDF 第 8 页"}],
+                }
+            ],
+        }
+
+    def _counts(self) -> dict[str, int]:
+        connection = sqlite3.connect(self.database)
+        try:
+            return {
+                table: connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                for table in ("cases", "documents", "case_documents", "geometry_links")
+            }
+        finally:
+            connection.close()
+
+    def test_complete_mapping_is_written(self) -> None:
+        counts = build_case_mapping.load_into_sqlite(self.database, self._mapping(), REPO)
+        self.assertEqual(counts, {"cases": 1, "documents": 1, "case_documents": 1, "geometry_links": 2})
+
+    def test_missing_landslide_rolls_back(self) -> None:
+        with self.assertRaises(LookupError):
+            build_case_mapping.load_into_sqlite(self.database, self._mapping(landslide_id="ls_9999"), REPO)
+        self.assertEqual(self._counts(), {"cases": 0, "documents": 0, "case_documents": 0, "geometry_links": 0})
+
+    def test_missing_document_rolls_back(self) -> None:
+        with self.assertRaises(LookupError):
+            build_case_mapping.load_into_sqlite(self.database, self._mapping(document_id="doc-missing"), REPO)
+        self.assertEqual(self._counts(), {"cases": 0, "documents": 0, "case_documents": 0, "geometry_links": 0})
+
+    def test_orphan_case_is_rejected_after_insert(self) -> None:
+        mapping = self._mapping()
+        mapping["cases"][0]["imageAssetId"] = "train224-404"
+        with self.assertRaises(LookupError):
+            build_case_mapping.load_into_sqlite(self.database, mapping, REPO)
+        self.assertEqual(self._counts(), {"cases": 0, "documents": 0, "case_documents": 0, "geometry_links": 0})
 
 
 if __name__ == "__main__":

@@ -16,9 +16,14 @@ missing      empty name/summary, null area/perimeter, image coverage
 images       file presence, 224x224 size, SHA-256, crop scale statistics
 geometry     2971 points / 2971 polygons and a complete record index
 
-Verdict: ``blocked`` when any check fails, ``ready_for_import`` only when the
-caller supplies coordinate evidence, ``conditional_pending_coordinate_verification``
-otherwise.
+Verdict: ``blocked`` when any check fails; ``ready_for_import`` only when the
+caller both supplies coordinate evidence *and* declares a verified latitude
+convention (``planetocentric`` or ``planetographic``); otherwise
+``conditional_pending_coordinate_verification``.
+
+The latitude convention is a single parameter threaded through admission, export
+and case mapping, so the report always describes the numbers that were actually
+written. The default, ``unverified``, passes coordinates through untouched.
 
 Usage
 -----
@@ -74,10 +79,14 @@ class Admission:
     def blockers(self) -> list[dict[str, Any]]:
         return [check for check in self.checks if check["status"] == "fail"]
 
-    def verdict(self, coordinate_evidence: str | None) -> str:
+    def verdict(self, coordinate_evidence: str | None, latitude_convention: str = "unverified") -> str:
         if self.blockers:
             return "blocked"
-        return "ready_for_import" if coordinate_evidence else "conditional_pending_coordinate_verification"
+        if not (coordinate_evidence or "").strip():
+            return "conditional_pending_coordinate_verification"
+        if mars_latitude.resolve_convention(latitude_convention) == "unverified":
+            return "conditional_pending_coordinate_verification"
+        return "ready_for_import"
 
 
 def check_identifiers(catalog: list[dict[str, Any]], report: Admission) -> None:
@@ -147,12 +156,61 @@ def check_types(
     )
 
 
+def manual_box_evidence(
+    root: Path,
+    catalog: list[dict[str, Any]],
+    convention: str,
+) -> dict[str, Any] | None:
+    """Compare catalog points against the manual crop boxes in their own frame.
+
+    The 1083 crops record ``manual_box_world_m`` in the local CTX mosaic
+    projection (planetocentric, per the handoff note), so the frame is used as it
+    is and only the point latitude changes with ``convention``. Points that sit
+    inside the box as authored but outside after conversion are direct evidence
+    against applying that conversion (736 of them, see ``mars_latitude``).
+    Returns ``None`` when the crop index is unavailable.
+    """
+    path = root / "03_images" / "image_index.json"
+    if not path.is_file():
+        return None
+    images = read_json(path)
+    if isinstance(images, dict):
+        images = list(images.values())
+    by_source = {int(record["source_id"]): record for record in catalog}
+    degree = 180.0 / (math.pi * MARS_RADIUS_M)
+
+    def inside(box: list[float], lon: float, lat: float) -> bool:
+        x0, y0, x1, y1 = box
+        return x0 * degree <= lon <= x1 * degree and -y1 * degree <= lat <= -y0 * degree
+
+    convention = mars_latitude.resolve_convention(convention)
+    images_total = boxes = outside_now = outside_converted = 0
+    for entry in images:
+        record = by_source.get(int(entry["source_id"]))
+        box = entry.get("manual_box_world_m")
+        if record is None or not box:
+            continue
+        images_total += 1
+        boxes += 1
+        if not inside(box, record["lon"], mars_latitude.to_export_latitude(record["lat"], convention)):
+            outside_now += 1
+        if not inside(box, record["lon"], mars_latitude.planetographic_to_planetocentric(record["lat"])):
+            outside_converted += 1
+    return {
+        "images": images_total,
+        "boxes": boxes,
+        "outsideNow": outside_now,
+        "outsideIfConverted": outside_converted,
+        "movedOutByConversion": outside_converted - outside_now,
+    }
+
+
 def check_coordinates(
     root: Path,
     catalog: list[dict[str, Any]],
     index: list[dict[str, Any]],
     report: Admission,
-    latitude_convention: str = "planetographic",
+    latitude_convention: str = "unverified",
 ) -> None:
     out_of_range = [
         record["id"]
@@ -176,25 +234,36 @@ def check_coordinates(
         f"{len(duplicates)} 组重复坐标" if duplicates else "无重复坐标",
     )
 
-    label = (
-        "行星图形纬度（planetographic）"
-        if latitude_convention == "planetographic"
-        else "行星心纬度（planetocentric）"
-    )
-    if latitude_convention == "planetographic":
+    convention = mars_latitude.resolve_convention(latitude_convention)
+    evidence = manual_box_evidence(root, catalog, convention)
+    evidence_text = ""
+    if evidence and evidence["movedOutByConversion"] > 0:
+        evidence_text = (
+            f"；对照 {evidence['boxes']} 个人工框，原值越界 {evidence['outsideNow']} 条，"
+            f"若换算为行星心纬度则越界 {evidence['outsideIfConverted']} 条（多移出 {evidence['movedOutByConversion']} 条）"
+        )
+    elif evidence:
+        evidence_text = f"；对照 {evidence['boxes']} 个人工框，越界 {evidence['outsideNow']} 条"
+
+    if convention == "planetographic":
         shifts = [mars_latitude.shift_deg(record["lat"]) for record in catalog]
         moved = sum(1 for shift in shifts if shift > 0.01)
         max_shift = max(shifts) if shifts else 0.0
         detail = (
-            f"源清单为{label}；按 IAU 2000 椭球 (b/a)² 换算为行星心纬度后入库，"
+            "源清单按行星面纬度（planetographic）声明，已按 IAU 2000 椭球 (b/a)² 换算为行星心纬度入库，"
             f"{moved} 条移动超过 0.01°，最大 {max_shift:.4f}°（约 {max_shift * KM_PER_DEGREE:.1f} km）"
+            + evidence_text
         )
-        status = "pass"
+    elif convention == "planetocentric":
+        moved = 0
+        detail = "源清单声明为行星心纬度（planetocentric），数值原样保留，未做换算" + evidence_text
     else:
         moved = 0
-        detail = f"源清单为{label}，无需换算"
-        status = "pass"
-    report.add("coords.latitude_convention", "纬度约定与换算", status, moved, detail)
+        detail = (
+            "纬度约定未经核实：保留原始数值，不做换算，导出停在 staging（ready 需显式声明约定）"
+            + (evidence_text or "；缺少裁片索引，无法给出人工框对照")
+        )
+    report.add("coords.latitude_convention", "纬度约定与换算", "pass", moved, detail)
 
     try:
         import shapefile  # pyshp
@@ -432,8 +501,9 @@ def run(
     *,
     check_sha: bool = True,
     coordinate_evidence: str | None = None,
-    latitude_convention: str = "planetographic",
+    latitude_convention: str = mars_latitude.DEFAULT_CONVENTION,
 ) -> dict[str, Any]:
+    convention = mars_latitude.resolve_convention(latitude_convention)
     catalog = read_json(root / "01_catalog" / "mars_landslides.json")
     index = read_json(root / "01_catalog" / "source_id_index.json")
     images = read_json(root / "03_images" / "image_index.json")
@@ -441,7 +511,7 @@ def run(
     report = Admission()
     check_identifiers(catalog, report)
     check_types(catalog, index, report)
-    check_coordinates(root, catalog, index, report, latitude_convention)
+    check_coordinates(root, catalog, index, report, convention)
     check_missing(catalog, images, report)
     check_images(root, images, report, check_sha)
     check_geometry(root, catalog, index, report)
@@ -454,9 +524,11 @@ def run(
         },
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "coordinate_evidence": coordinate_evidence,
-        "latitude_convention": latitude_convention,
+        "latitude_convention": convention,
+        "latitude": mars_latitude.describe(convention),
+        "manual_boxes": manual_box_evidence(root, catalog, convention),
         "summary": report.summary(),
-        "verdict": report.verdict(coordinate_evidence),
+        "verdict": report.verdict(coordinate_evidence, convention),
         "blockers": [check["id"] for check in report.blockers],
         "checks": report.checks,
     }
@@ -472,6 +544,10 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
         f"**结论：`{report['verdict']}`**　",
         f"通过 {report['summary'].get('pass', 0)} 项，警告 {report['summary'].get('warn', 0)} 项，"
         f"失败 {report['summary'].get('fail', 0)} 项。",
+        "",
+        f"纬度约定：`{report.get('latitude_convention', 'unverified')}`"
+        f"（{'已换算为行星心纬度' if report.get('latitude', {}).get('applied') else '原样保留，未换算'}）　",
+        f"坐标依据：{report.get('coordinate_evidence') or '未提供'}",
         "",
     ]
     if report["blockers"]:
@@ -496,9 +572,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--coordinate-evidence", help="核准纬度约定的依据；提供后结论才可能是 ready_for_import")
     parser.add_argument(
         "--latitude-convention",
-        choices=("planetographic", "planetocentric"),
-        default="planetographic",
-        help="源清单的纬度约定（默认 planetographic）",
+        choices=mars_latitude.CONVENTIONS,
+        default=mars_latitude.DEFAULT_CONVENTION,
+        help="源清单的纬度约定：unverified（默认，原样保留）/ planetocentric（原样保留）/ "
+        "planetographic（按 IAU 2000 椭球换算为行星心纬度）",
     )
     parser.add_argument("--skip-sha", action="store_true")
     args = parser.parse_args(argv)
