@@ -108,6 +108,23 @@
               "default": 20,
               "title": "Pagesize"
             }
+          },
+          {
+            "name": "bbox",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox"
+            }
           }
         ],
         "responses": {
@@ -216,6 +233,23 @@
               ],
               "title": "Type"
             }
+          },
+          {
+            "name": "bbox",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bbox"
+            }
           }
         ],
         "responses": {
@@ -260,6 +294,44 @@
         }
       }
     },
+    "/api/agent/chat": {
+      "post": {
+        "summary": "Agent Chat",
+        "operationId": "agent_chat_api_agent_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/landslide/classify": {
       "post": {
         "summary": "Classify",
@@ -279,6 +351,77 @@
   },
   "components": {
     "schemas": {
+      "AgentAction": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "locate",
+              "open_recognize",
+              "open_task"
+            ],
+            "title": "Type"
+          },
+          "slideId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slideid"
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskid"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "AgentAction"
+      },
+      "AgentCapability": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "model"
+        ],
+        "title": "AgentCapability"
+      },
       "Capabilities": {
         "properties": {
           "dataMode": {
@@ -298,6 +441,9 @@
           },
           "detection": {
             "$ref": "#/components/schemas/Capability"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentCapability"
           }
         },
         "additionalProperties": false,
@@ -306,7 +452,8 @@
           "dataMode",
           "version",
           "classifier",
-          "detection"
+          "detection",
+          "agent"
         ],
         "title": "Capabilities"
       },
@@ -365,6 +512,175 @@
           "records"
         ],
         "title": "Catalog"
+      },
+      "ChatMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "ChatMessage"
+      },
+      "ChatRequest": {
+        "properties": {
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Messages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "title": "ChatRequest"
+      },
+      "ChatResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "llm_unavailable",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/Slide"
+            },
+            "type": "array",
+            "title": "Records"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/AgentAction"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "toolCalls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallRecord"
+            },
+            "type": "array",
+            "title": "Toolcalls"
+          },
+          "traceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Traceid"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "answer"
+        ],
+        "title": "ChatResponse"
+      },
+      "Citation": {
+        "properties": {
+          "refType": {
+            "type": "string",
+            "enum": [
+              "source",
+              "doc",
+              "slide"
+            ],
+            "title": "Reftype"
+          },
+          "refId": {
+            "type": "string",
+            "title": "Refid"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "refType",
+          "refId",
+          "title"
+        ],
+        "title": "Citation"
       },
       "CoordinateSystem": {
         "properties": {
@@ -662,6 +978,30 @@
           "version"
         ],
         "title": "Statistics"
+      },
+      "ToolCallRecord": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "args": {
+            "type": "object",
+            "title": "Args"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "args",
+          "ok"
+        ],
+        "title": "ToolCallRecord"
       },
       "ValidationError": {
         "properties": {
