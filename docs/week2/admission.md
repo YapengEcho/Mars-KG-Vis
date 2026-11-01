@@ -81,7 +81,7 @@ python scripts/export_checked_catalog.py --handoff <交接包> --out <目录> --
 
 # 拿到书面依据后才能出 ready（二选一：planetocentric 表示源本身就是行星心）
 python scripts/export_checked_catalog.py --handoff <交接包> --out <目录> --mode ready \
-  --latitude-convention planetographic --coordinate-evidence "2026-11-03 老师确认：按行星面纬度使用" \
+  --latitude-convention planetographic --coordinate-evidence "<老师书面确认待补：纬度约定与依据；未确认前不要填这一项>" \
   --sqlite ready.db
 ```
 

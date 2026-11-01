@@ -16,6 +16,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
@@ -392,6 +393,162 @@ class SqliteLinkTest(unittest.TestCase):
         with self.assertRaises(LookupError):
             build_case_mapping.load_into_sqlite(self.database, mapping, REPO)
         self.assertEqual(self._counts(), {"cases": 0, "documents": 0, "case_documents": 0, "geometry_links": 0})
+
+    def test_mapping_with_issues_is_not_written(self) -> None:
+        mapping = self._mapping()
+        mapping["issues"] = [{"source_id": 1, "problems": ["点位不在取图框内（planetographic）"]}]
+        with self.assertRaises(ValueError):
+            build_case_mapping.load_into_sqlite(self.database, mapping, REPO)
+        self.assertEqual(self._counts(), {"cases": 0, "documents": 0, "case_documents": 0, "geometry_links": 0})
+
+
+class CaseCliTest(unittest.TestCase):
+    """The CLI must not write cases when the mapping recorded issues."""
+
+    def setUp(self) -> None:
+        if not (HANDOFF / "01_catalog" / "mars_landslides.json").is_file():
+            self.skipTest(f"交接包不存在：{HANDOFF}")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.database = self.root / "cases.db"
+        connection = sqlite3.connect(self.database)
+        try:
+            connection.executescript((REPO / "api" / "db" / "schema.sql").read_text(encoding="utf-8"))
+            connection.execute("INSERT INTO sources(id,title) VALUES('src','test')")
+            connection.execute(
+                "INSERT INTO landslides(id,source_id,name,type,raw_type,longitude,latitude,source_ref,is_demo,raw_record_json)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                ("ls_0001", 1, "滑坡 1", "SL", "SL", 10.0, 20.0, "src", 0, "{}"),
+            )
+            connection.execute(
+                "INSERT INTO assets(id,landslide_id,kind,path) VALUES(?,?,?,?)",
+                ("train224-1", "ls_0001", "image", "03_images/train224/SL/slide_00001.png"),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def _counts(self) -> dict[str, int]:
+        connection = sqlite3.connect(self.database)
+        try:
+            return {
+                table: connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+                for table in ("cases", "documents", "case_documents", "geometry_links")
+            }
+        finally:
+            connection.close()
+
+    def test_cli_skips_the_database_when_the_mapping_has_issues(self) -> None:
+        mapping = {
+            "source": {},
+            "documents": [
+                {
+                    "id": "doc-inventory-paper",
+                    "title": "paper",
+                    "url": "https://doi.org/10.13203/j.whugis20250300",
+                    "localPath": None,
+                    "citation": "citation",
+                }
+            ],
+            "cases": [
+                {
+                    "id": "case-ls-0001",
+                    "sourceId": 1,
+                    "landslideId": "ls_0001",
+                    "title": "SL 案例",
+                    "description": "",
+                    "status": "draft",
+                    "imageAssetId": "train224-1",
+                    "geometry": {
+                        "point": {"assetId": "geometry-point-0001", "recordIndex0": 0, "rawType": "SL"},
+                        "polygon": {"assetId": "geometry-polygon-0001", "recordIndex0": 0, "rawType": "SL"},
+                    },
+                    "citation": [{"documentId": "doc-inventory-paper", "locator": "PDF 第 8 页"}],
+                    "preview": {"metersPerPixel": 25.0, "tiles": ["E-084_N-08"], "windowM": 5000.0},
+                    "highResolution": {
+                        "lonMin": 9.9,
+                        "lonMax": 10.1,
+                        "latMin": 19.9,
+                        "latMax": 20.1,
+                        "windowM": 5000.0,
+                        "ctxWidthPx": 833,
+                        "hiriseWidthPx": 16666,
+                        "requestedDisplayPx": 1024,
+                        "status": "pending_request",
+                    },
+                }
+            ],
+            "issues": [{"source_id": 1, "problems": ["点位不在取图框内（planetographic）"]}],
+        }
+        out = self.root / "cases"
+        with mock.patch.object(build_case_mapping, "build_mapping", return_value=mapping):
+            code = build_case_mapping.main(
+                [
+                    "--handoff", str(HANDOFF),
+                    "--out", str(out),
+                    "--cases", str(HANDOFF / "06_templates" / "cases12.todo.json"),
+                    "--sqlite", str(self.database),
+                ]
+            )
+        self.assertEqual(code, 1)
+        self.assertTrue((out / "cases12.mapping.json").is_file(), "诊断文件仍应输出")
+        self.assertEqual(self._counts(), {"cases": 0, "documents": 0, "case_documents": 0, "geometry_links": 0})
+
+
+class ExportSqliteVersionTest(unittest.TestCase):
+    """The database must carry the manifest version and the coordinate evidence."""
+
+    def setUp(self) -> None:
+        if not (HANDOFF / "01_catalog" / "mars_landslides.json").is_file():
+            self.skipTest(f"交接包不存在：{HANDOFF}")
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+    def _metadata(self, path: Path) -> dict:
+        connection = sqlite3.connect(path)
+        try:
+            return {row[0]: json.loads(row[1]) for row in connection.execute("SELECT key,value FROM metadata")}
+        finally:
+            connection.close()
+
+    def test_export_version_and_provenance_reach_the_database(self) -> None:
+        result = export_checked_catalog.export(
+            HANDOFF,
+            self.root / "out",
+            mode="staging",
+            coordinate_evidence="测试用占位依据：<待老师书面确认>",
+            version="review-stage-v77",
+            sqlite_path=self.root / "staging.db",
+            check_sha=False,
+        )
+        metadata = self._metadata(self.root / "staging.db")
+        self.assertEqual(metadata["version"], "review-stage-v77")
+        self.assertEqual(metadata["version"], result["version"])
+        provenance = metadata["importProvenance"]
+        self.assertEqual(provenance["latitudeSource"], "unverified")
+        self.assertFalse(provenance["latitudeConversionApplied"])
+        self.assertEqual(provenance["coordinateEvidence"], "测试用占位依据：<待老师书面确认>")
+        self.assertEqual(provenance["manifestVersion"], "review-stage-v77")
+
+    def test_ready_export_records_the_conversion_state(self) -> None:
+        export_checked_catalog.export(
+            HANDOFF,
+            self.root / "ready",
+            mode="ready",
+            coordinate_evidence="测试用占位依据：<待老师书面确认>",
+            version="review-ready-v77",
+            sqlite_path=self.root / "ready.db",
+            check_sha=False,
+            latitude_convention="planetographic",
+        )
+        metadata = self._metadata(self.root / "ready.db")
+        self.assertEqual(metadata["version"], "review-ready-v77")
+        provenance = metadata["importProvenance"]
+        self.assertEqual(provenance["latitudeSource"], "planetographic")
+        self.assertTrue(provenance["latitudeConversionApplied"])
+        self.assertEqual(provenance["latitudeLabel"], "planetocentric, degrees")
 
 
 if __name__ == "__main__":

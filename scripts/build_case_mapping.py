@@ -345,6 +345,13 @@ def load_into_sqlite(path: Path, mapping: dict[str, Any], handoff: Path) -> dict
     """
     import sqlite3
 
+    issues = mapping.get("issues") or []
+    if issues:
+        detail = "；".join(
+            f"{item.get('source_id')}: {'、'.join(item.get('problems') or [])}" for item in issues[:5]
+        )
+        raise ValueError(f"映射存在 {len(issues)} 个问题，拒绝写库：{detail}")
+
     point_shp = "02_vectors/landslide_points/火星滑坡点.shp"
     boundary_shp = "02_vectors/landslide_boundaries/火星滑坡-带边界.shp"
     connection = sqlite3.connect(path, isolation_level=None)
@@ -467,7 +474,10 @@ def main(argv: list[str] | None = None) -> int:
     write_csv(mapping, out / "cases12.highres.csv")
     write_table(mapping, out / "cases12.table.md")
 
-    if args.sqlite:
+    if args.sqlite and mapping["issues"]:
+        # 诊断文件照常落盘，但业务校验没过就不写库：外键没问题不代表映射可信。
+        print(f"跳过写库：映射存在 {len(mapping['issues'])} 个问题，先修映射再写库")
+    elif args.sqlite:
         database = args.sqlite.expanduser().resolve()
         if not database.is_file():
             parser.error(f"数据库不存在：{database}")

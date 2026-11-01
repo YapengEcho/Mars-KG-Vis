@@ -87,6 +87,9 @@ python scripts/build_case_mapping.py --handoff <交接包> --out out --sqlite ou
 所以流程是：先用 `export_checked_catalog.py --sqlite <库>` 建库，再把库复制一份或直接对同一个库追加
 （`INSERT OR REPLACE`，可重复执行）。
 
+映射只要记录到 `issues`（缺裁片、点位跑出取图框、面积超差），`main` 就**拒绝写库**，只输出诊断文件；
+`load_into_sqlite` 内部对直接调用者也做同样拦截（抛 `ValueError('映射存在 N 个问题，拒绝写库…')`）。
+
 写库在单个事务里完成：连接开 `PRAGMA foreign_keys=ON`（开不了就报 `无法开启 SQLite 外键检查`），
 每条案例先确认 `landslides` / `assets` / `documents` 里的父记录存在（缺了抛
 `LookupError('关联不存在：…')`），提交前跑 `PRAGMA foreign_key_check` 必须为空、并检查没有

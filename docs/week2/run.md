@@ -43,7 +43,7 @@ Copy-Item "$out\staging.db" "$out\cases.db"
 & $py scripts/build_case_mapping.py --handoff $handoff --out "$out\cases" --sqlite "$out\cases.db"
 
 # 4) 只有拿到可追溯的纬度依据后，才允许 ready
-$evidence = '2026-11-03 老师确认：编目纬度按行星面纬度（planetographic）使用'
+$evidence = '<老师书面确认待补：纬度约定与依据；未确认前不要填这一项>'  # 只有在拿到可追溯依据后才替换
 & $py scripts/export_checked_catalog.py --handoff $handoff --out "$out\ready" --mode ready `
     --latitude-convention planetographic --coordinate-evidence $evidence --sqlite "$out\ready.db"
 
@@ -60,10 +60,12 @@ $env:TEMP = 'D:\python_project\.tmp'   # 否则 pytest/unittest 的临时目录�
 & $py -m unittest discover -s scripts -p 'test_week2_scripts.py' -v
 ```
 
-35 项：纯函数 22 项（屏幕坐标→经纬、球面面积、点在多边形、摘要、CSV、行星面↔行星心换算与位移统计）
-+ 交接包集成 9 项（准入无 fail、默认无依据时结论为 conditional、有依据且有约定时为 ready、
-默认导出不改纬度、人工框 736 点移出、取图框保持自身坐标、条数与类别、12 例无缺项）
-+ 外键 4 项（完整映射可写、缺父记录回滚、孤儿案例被拒）。
+39 项：纯函数 22 项（屏幕坐标→经纬、球面面积、点在多边形、摘要、CSV、行星面↔行星心换算与位移统计）
++ 交接包集成 11 项（准入无 fail、默认无依据时结论为 conditional、有依据且有约定时为 ready、
+默认导出不改纬度、人工框 736 点移出、取图框保持自身坐标、条数与类别、12 例无缺项、
+导出版本与依据写进库、planetographic 时换算状态写进库）
++ 外键与写库 6 项（完整映射可写、缺父记录回滚、孤儿案例被拒、映射有问题时拒绝写库、
+CLI 在有问题的映射上退出 1 且不改库）。
 交接包不存在时集成测试自动跳过，`HANDOFF_DIR` 环境变量可以指向别的位置。
 
 CI 只跑 `api/tests` 与 `scripts/test_export_catalog.py`，本文件的测试目前是本地跑；
@@ -80,5 +82,7 @@ CI 只跑 `api/tests` 与 `scripts/test_export_catalog.py`，本文件的测试�
 | 点位整体偏南/北十几公里 | 行星面纬度当成行星心纬度入库 | 走 `mars_latitude` 换算，别只改标签 |
 | 736 个点跑出人工取图框 | 在对纬度约定没有依据时默认做了行星面→行星心换算 | 默认 `unverified` 不换算；对照 `compare_latitude_conventions.py` |
 | 案例写库只写了一半 | 没开外键、父记录不存在时静默插入 | 已开 `PRAGMA foreign_keys=ON` + `foreign_key_check` + 单事务回滚 |
+| 映射有问题（点位跑出取图框）却仍然写库 | CLI 先写库再判 `issues`，外键检查又只看关联 | `main` 先判 `issues` 拒绝写库，`load_into_sqlite` 内部同样拦截 |
+| 库里的版本与 manifest 对不上 | staging 列表载荷没有版本字段，`build_database` 回落到默认值 | 传 `version_override=manifest.version`，并把坐标依据写进 `importProvenance` |
 | `pip install` 卡住无输出 | pip 网络层异常 | 用 `--no-index --find-links` 离线装 |
 | `npm`/`git` 相关命令报 TLS 或执行策略错误 | schannel 异常、PowerShell 脚本受限 | 见第 1 周 `docs/week1/run.md` |

@@ -57,8 +57,23 @@
 ## 4. 数据库
 
 - `build_database(..., raw=True)` 写 staging：`metadata.release_state=staging`、纬度 `unverified`、
-  `metadata.version=inventory-staging-20261024`、`mode=catalog`。
+  `metadata.version` 取本次导出的 `--version`（不再回落到 `inventory-staging`）、`mode=catalog`。
 - `build_database(..., raw=False)` 写 ready：先 `Catalog.model_validate`，再入库。
+- 两种模式都通过 `version_override=<manifest.version>` 建库，并把
+  `metadata.importProvenance` 写成导出侧的可追溯信息：
+
+  | 键 | 含义 |
+  |---|---|
+  | `exporter` / `manifestVersion` | 生成脚本与导出批次 |
+  | `mode` | `staging` / `ready` |
+  | `coordinateEvidence` | 本次使用的坐标依据原文（`unverified` 时为 `null`） |
+  | `latitudeSource` | 源清单的纬度约定 |
+  | `latitudeConversionApplied` | 实际有没有做换算 |
+  | `latitudeLabel` | 写进 `coordinateSystem.latitude` 的标签 |
+  | `admissionVerdict` | 准入结论 |
+
+  `build_database` 会把 `payload_sha256` / `source_index_sha256` /
+  `image_index_sha256` 合并进同一个对象，因此库里能同时看到「数据是哪批」和「按什么约定发布」。
 - 已存在的库不会被覆盖，会抛 `FileExistsError('Database already exists; write a new version')`，
   换一个文件名即可。
 - `build_database` 只写目录相关四张表。`cases`、`documents`、`case_documents`、`geometry_links`
@@ -85,8 +100,12 @@ python scripts/export_checked_catalog.py --handoff <交接包> --out out/staging
 # ready 导出（含 SQLite），这是 APP 能读的那一份；需依据 + 已核实的约定
 python scripts/export_checked_catalog.py --handoff <交接包> --out out/ready --mode ready \
   --latitude-convention planetographic \
-  --coordinate-evidence "2026-11-03 老师确认：编目纬度按行星面纬度（planetographic）使用" \
+  --coordinate-evidence "<老师书面确认待补：纬度约定与依据；未确认前不要填这一项>" \
   --sqlite out/ready.db
 ```
 
-默认 `--version mars-landslides-20261101-v3`。
+默认 `--version mars-landslides-20261101-v3`。`manifest.json` 的 `version` 与库里的
+`metadata.version` 必须一致，`tests/test_week2_scripts.py::ExportSqliteVersionTest` 会盯住这一点。
+
+> 换算后的「2271 个点落在原多边形外」只说明结果与**未换算的边界**不自洽，不构成纬度约定的证据；
+> 人工取图框的 736 点只能支撑「现在不该换算」，同样不是核准依据。

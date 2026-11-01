@@ -161,6 +161,8 @@ def build_sqlite(
     images: list[dict[str, Any]],
     *,
     raw: bool,
+    version: str,
+    provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     from api.sqlite_store import build_database
 
@@ -173,6 +175,10 @@ def build_sqlite(
         source_index=source_index,
         image_index=images,
         asset_root=handoff,
+        # 库里的版本必须与 manifest 一致，否则不同批次在库内都显示同一个默认值
+        version_override=version,
+        # 坐标依据与换算状态随库走，换个人接手也能看出这批数据按什么约定发布
+        provenance=provenance,
     )
 
 
@@ -231,7 +237,25 @@ def export(
 
     database = None
     if sqlite_path:
-        database = build_sqlite(sqlite_path, payload, handoff, images, raw=(mode != "ready"))
+        provenance = {
+            "exporter": "scripts/export_checked_catalog.py",
+            "manifestVersion": version,
+            "mode": mode,
+            "coordinateEvidence": coordinate_evidence,
+            "latitudeSource": convention,
+            "latitudeConversionApplied": bool(conversion.get("applied")),
+            "latitudeLabel": mars_latitude.export_label(convention),
+            "admissionVerdict": admission["verdict"],
+        }
+        database = build_sqlite(
+            sqlite_path,
+            payload,
+            handoff,
+            images,
+            raw=(mode != "ready"),
+            version=version,
+            provenance=provenance,
+        )
 
     exported = payload["records"] if isinstance(payload, dict) else payload
     counts: dict[str, int] = {}
