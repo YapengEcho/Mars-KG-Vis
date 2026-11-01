@@ -1,6 +1,7 @@
 """Versioned SQLite import and read-only catalog adapter."""
 from datetime import datetime, timezone
 import json
+import hashlib
 import math
 from pathlib import Path
 import sqlite3
@@ -17,13 +18,14 @@ def _json(value: Any) -> str:
 
 def build_database(path: Path, payload: dict | list, *, raw=False,
                    source_title='老师提供的火星滑坡编目', source_index: list | None = None,
-                   image_index: list | None = None, asset_root: Path | None = None) -> dict:
+                   image_index: list | None = None, asset_root: Path | None = None,
+                   version_override: str | None = None, provenance: dict | None = None) -> dict:
     """Create a new database; raw imports stay staged until coordinates are verified."""
     path=Path(path).resolve()
     if path.exists():raise FileExistsError('Database already exists; write a new version')
     if raw:
         if not isinstance(payload,list) or not payload:raise ValueError('Raw input must be a nonempty list')
-        version='inventory-staging-20261024';mode='catalog';state='staging'
+        version=version_override or 'inventory-staging';mode='catalog';state='staging'
         coordinates={'body':'Mars','longitude':'east-positive, -180..180','latitude':'unverified'}
         index={int(r['source_id']):r for r in (source_index or [])}
         records=[]
@@ -36,8 +38,11 @@ def build_database(path: Path, payload: dict | list, *, raw=False,
                 rawType=index.get(sid,{}).get('raw_type',r['type']),perimeter=r.get('perimeter'),original=r))
     else:
         catalog=Catalog.model_validate(payload)
-        version=catalog.version;mode=catalog.mode;state='ready';coordinates=catalog.coordinateSystem.model_dump()
-        records=[dict(r.model_dump(),rawType=r.type,perimeter=None,original=r.model_dump()) for r in catalog.records]
+        version=version_override or catalog.version;mode=catalog.mode;state='ready';coordinates=catalog.coordinateSystem.model_dump()
+        index={int(r['source_id']):r for r in (source_index or [])}
+        records=[dict(r.model_dump(),rawType=index.get(r.sourceId,{}).get('raw_type',r.type),
+                      perimeter=None,original=r.model_dump()) for r in catalog.records]
+    if not isinstance(version,str) or not version.strip():raise ValueError('Version must not be empty')
     ids=set();source_ids=set()
     for r in records:
         if not isinstance(r['id'],str) or not r['id'] or r['id'] in ids:raise ValueError('Duplicate or empty id')
@@ -59,7 +64,11 @@ def build_database(path: Path, payload: dict | list, *, raw=False,
     try:
         db.executescript(SCHEMA.read_text(encoding='utf-8'))
         metadata={'version':version,'mode':mode,'release_state':state,'coordinateSystem':coordinates,
-            'created_utc':datetime.now(timezone.utc).isoformat(),'schema_version':1}
+            'created_utc':datetime.now(timezone.utc).isoformat(),'schema_version':1,
+            'importProvenance':dict(provenance or {},
+                payload_sha256=hashlib.sha256(_json(payload).encode('utf-8')).hexdigest(),
+                source_index_sha256=hashlib.sha256(_json(source_index or []).encode('utf-8')).hexdigest(),
+                image_index_sha256=hashlib.sha256(_json(image_index or []).encode('utf-8')).hexdigest())}
         with db:
             db.executemany('INSERT INTO metadata VALUES (?,?)',[(k,_json(v)) for k,v in metadata.items()])
             source_refs={}
