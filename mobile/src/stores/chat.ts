@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { buildChatHistory } from '../lib/chatHistory'
-import { sendChatMessage } from '../services/api'
+import { streamChatMessage } from '../services/api'
 import type { AgentAction, ChatResponse } from '../services/api'
 
 export const WELCOME_MESSAGE =
@@ -38,16 +38,33 @@ export const chat = {
     state.error = ''
     state.thread.push({ role: 'user', content: question })
     state.busy = true
+    // The assistant bubble is created lazily on the first streamed chunk and
+    // grows as deltas arrive; onDone swaps in the authoritative final payload.
+    let entryIndex = -1
+    let finished = false
+    const ensureEntry = (): ChatEntry => {
+      if (entryIndex < 0) {
+        state.thread.push({ role: 'assistant', content: '' })
+        entryIndex = state.thread.length - 1
+      }
+      return state.thread[entryIndex]
+    }
     try {
-      const response = await sendChatMessage(buildChatHistory(state.thread))
-      state.thread.push({
-        role: 'assistant',
-        content: response.answer,
-        records: response.records,
-        citations: response.citations,
-        actions: response.actions,
-        status: response.status,
+      await streamChatMessage(buildChatHistory(state.thread), {
+        onDelta: (chunk) => {
+          ensureEntry().content += chunk
+        },
+        onDone: (response) => {
+          finished = true
+          const entry = ensureEntry()
+          entry.content = response.answer
+          entry.records = response.records
+          entry.citations = response.citations
+          entry.actions = response.actions
+          entry.status = response.status
+        },
       })
+      if (!finished) state.error = '回复未完成，请重试'
     } catch (e) {
       state.error = e instanceof Error ? e.message : '发送失败，请稍后重试'
     } finally {
