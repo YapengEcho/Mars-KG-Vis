@@ -1,0 +1,345 @@
+{
+  "version": "atlas-20261108-v1",
+  "sourceDocument": {
+    "id": "doc-inventory-paper",
+    "title": "火星全球滑坡编目及分类初探",
+    "url": "https://doi.org/10.13203/j.whugis20250300",
+    "note": "页码为 PDF 物理页码（含封面，共 28 页），与印刷页码不同"
+  },
+  "dataNote": "本文件只放图鉴文案、类型与案例的关联编号和引用位置，不放经纬度、面积与影像：这些字段在运行时按 landslideId 从目录服务读取，避免在公开仓库复制真实记录。",
+  "types": [
+    {
+      "type": "SL",
+      "name": "滑移型",
+      "english": "slide-type landslide",
+      "quote": "斜坡基岩岩石或碎屑、风化层沿不稳定面滑动并发生溃散，扩散移动一定距离，形成具有流态化表面特征的长舌形、扇形堆积体。",
+      "deposits": "远程滑移、溃散堆积，部分发生侧向扩散；堆积体表面常形成纵向脊（纵向条纹）或沟槽等纹理。",
+      "flow": "大多有明显的流态化远程运动特征和纵向条纹特征。",
+      "recognize": [
+        "堆积体离开坡脚、有明显远程位移，前缘薄而铺展",
+        "找纵向脊/纵向条纹，以及中部的横向脊与沟槽",
+        "规模跨度大（<10³ m³ 到 >10¹⁰ m³ 都有），不能只看大小"
+      ],
+      "confusable": "最容易和 SP 混：SP 止于坡脚、短促紧凑，SL 会远程铺展并出现流态化纹理。",
+      "citations": [
+        { "documentId": "doc-inventory-paper", "locator": "表 2（PDF 第 8—9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "3.2.1 节（第 8 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 3 类型模式图（第 9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 4 SL 实例（第 10 页）" }
+      ],
+      "caseIds": ["case-ls-0493", "case-ls-0529", "case-ls-0591"]
+    },
+    {
+      "type": "SP",
+      "name": "滑塌型",
+      "english": "slump-type landslide",
+      "quote": "斜坡岩土体沿弯曲或复杂破坏表面滑动并垮塌堆积于坡脚，或破碎解体成碎块滑塌堆积于坡脚的现象。",
+      "deposits": "堆积和扩散距离有限，短促而紧凑，表面形态多样，厚度较厚或崎岖不平。",
+      "flow": "无明显流体特征；常见阶梯状错动、地堑、次级平台、纵向沟槽与脊线。",
+      "recognize": [
+        "堆积集中在坡脚，没有明显远程位移",
+        "表面呈阶梯状错动、次级平台，块体感强",
+        "规模不等于类型：小滑坡也可能是 SL，判据在运动与堆积方式"
+      ],
+      "confusable": "与 CL 的区别在于是否只有一种运动机制：CL 下部还会有远距离滑移堆积与纵向脊。",
+      "citations": [
+        { "documentId": "doc-inventory-paper", "locator": "表 2（PDF 第 8—9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "3.2.2 节（第 10 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 3 类型模式图（第 9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 5 SP 实例（第 11 页）" }
+      ],
+      "caseIds": ["case-ls-0483", "case-ls-0533", "case-ls-0594"]
+    },
+    {
+      "type": "FL",
+      "name": "流动型",
+      "english": "flow-type landslide",
+      "quote": "斜坡风化层岩石碎屑、细颗粒等沿沟谷或坡体表面汇聚并向下流动，形成扇形、叶状、针叶状等堆积体。",
+      "deposits": "沿沟谷长距离延伸，或沿坡体向下流动；分坡面型（前缘长舌形/不规则叶状、堆积薄而平）与沟谷型（多源汇入狭窄通道、堆积于谷口）。",
+      "flow": "具有明显的流态化运动特征；部分堆积体表面发育狭窄的暗色条纹，可能指示水分或细粒物质富集。",
+      "recognize": [
+        "看是否沿沟谷或坡面汇聚成一条通道，前缘呈扇形/叶状",
+        "全库只有 50 条：解译偏向规模大、形态典型者，不能当作“火星上很少”"
+      ],
+      "confusable": "与 SL 都有流态化特征，区别在物源与通道：FL 沿沟谷/坡面汇聚，SL 沿不稳定面整体滑动后溃散。",
+      "citations": [
+        { "documentId": "doc-inventory-paper", "locator": "表 2（PDF 第 8—9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "3.2.3 节（第 11—12 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 3 类型模式图（第 9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 6 FL 实例（第 12 页）" }
+      ],
+      "caseIds": ["case-ls-0505", "case-ls-0597", "case-ls-0688"]
+    },
+    {
+      "type": "CL",
+      "name": "复合型",
+      "english": "complex landslide",
+      "quote": "介于滑塌型和滑移型之间，或是具有多期次或混合特征的复杂滑坡；兼具两种或以上单一运动机制的典型特征。",
+      "deposits": "近端短促而紧凑分布、远端流体状扩散，或具多期次混合特征。",
+      "flow": "上部为滑塌型冠部与后壁，下部发育类似滑移型的纵向脊，说明运动过程中发生了机制转换；常存在次级陡壁与多期次叠加。",
+      "recognize": [
+        "看上下部是否属于不同运动机制（上部滑塌、下部远程滑移）",
+        "找次级陡壁、多期次叠加的边界",
+        "规模通常大于单一机制类型，但不能用面积反推类别"
+      ],
+      "confusable": "与 SP 的区别：SP 是单一垮塌、止于坡脚；CL 下部有远程滑移堆积。",
+      "citations": [
+        { "documentId": "doc-inventory-paper", "locator": "表 2（PDF 第 8—9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "3.2.4 节（第 12—13 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "图 3 类型模式图（第 9 页）" }
+      ],
+      "caseIds": ["case-ls-0482", "case-ls-0528", "case-ls-0592"]
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "sl-vs-sp",
+      "title": "SL 滑移型 vs SP 滑塌型",
+      "why": "最易混的一对：都从坡体破坏开始，差别在走多远、堆成什么形状。",
+      "left": "SL",
+      "right": "SP",
+      "rows": [
+        { "dimension": "运动距离", "left": "远，部分发生侧向扩散", "right": "有限，集中在坡脚" },
+        { "dimension": "堆积形态", "left": "长舌形、扇形，前缘铺展", "right": "短促紧凑，厚度大，崎岖" },
+        { "dimension": "流动性", "left": "高，流态化明显", "right": "低，无明显流体特征" },
+        { "dimension": "表面纹理", "left": "纵向脊/纵向条纹、横向脊", "right": "阶梯状错动、地堑、次级平台" },
+        { "dimension": "常见误判", "left": "只看一段条纹就判 SL", "right": "把“规模小”当成 SP" }
+      ],
+      "citations": [
+        { "documentId": "doc-inventory-paper", "locator": "表 2（PDF 第 8—9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "3.2.1、3.2.2 节（第 8、10 页）" }
+      ]
+    },
+    {
+      "id": "sp-vs-cl",
+      "title": "SP 滑塌型 vs CL 复合型",
+      "why": "看“单机制还是多机制”：CL 的下部会出现另一套运动留下的堆积。",
+      "left": "SP",
+      "right": "CL",
+      "rows": [
+        { "dimension": "运动组合", "left": "单一垮塌/滑塌", "right": "滑塌 + 滑移（或多次叠加）" },
+        { "dimension": "下部结构", "left": "止于坡脚", "right": "下部有远距离滑移堆积与纵向脊" },
+        { "dimension": "分期", "left": "通常一次破坏", "right": "常见多期次、次级陡壁" },
+        { "dimension": "判读要点", "left": "看坡脚堆积是否紧凑", "right": "看上下部是否属于不同机制" }
+      ],
+      "citations": [
+        { "documentId": "doc-inventory-paper", "locator": "表 2（PDF 第 8—9 页）" },
+        { "documentId": "doc-inventory-paper", "locator": "3.2.2、3.2.4 节（第 10、12—13 页）" }
+      ]
+    }
+  ],
+  "limits": [
+    "预览裁片尺度逐张不同：窗口是人工框长边的 1.5 倍，每像素 19.3–198.4 m（12 例范围）。比较两张裁片前先看尺度，不同尺度的“清晰/模糊”不是地质差异。",
+    "窗口只留 25% 余量：真实堆积体超出人工框时画面仍会被切掉，单张裁片不足以判断“源区—通道—堆积区”的完整关系。",
+    "224×224 预览不是原生分辨率：整幅裁片被缩放到 224 像素，不能据此讨论细部纹理（论文用 6 m/像素 CTX 解译）。",
+    "类别是专家编目标签：论文的 0.83 是两位解译者之间的识别一致性 F1，不是自动分类精度；模型输出不能改写这里的标签。",
+    "看不见不等于没有：编目受影像分辨率限制，未记录区域不能当作“无滑坡”的负样本。",
+    "案例仍是候选：12 条是否“典型”要老师确认；引用页码按 PDF 物理页，期刊正式版如不同需替换并保留 DOI。"
+  ],
+  "cases": [
+    {
+      "id": "case-ls-0493",
+      "landslideId": "ls_0493",
+      "type": "SL",
+      "title": "远程堆积的滑移型",
+      "subtitle": "12 例中最大的 SL",
+      "region": "水手号峡谷",
+      "tile": "E-084_N-08",
+      "previewScale": "190.9 m/像素",
+      "observations": [
+        "先看整体轮廓：堆积体已离开坡脚、前缘向外铺展，这是 SL 与 SP 的分界。",
+        "190.9 m/像素下纹理有限，纵向条纹只能看走向，不要评“粗细”。",
+        "与同类的 ls_0591（6.6 km²）对照，可以讨论同类型不同规模时窗口与细节的取舍。"
+      ],
+      "tags": ["大尺度", "远程堆积"],
+      "citationLocator": "3.2.1 节（PDF 第 8 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0529",
+      "landslideId": "ls_0529",
+      "type": "SL",
+      "title": "中等尺度的滑移型",
+      "subtitle": "与 ls_0493 同区域、不同图幅",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-08",
+      "previewScale": "55.9 m/像素",
+      "observations": [
+        "55.9 m/像素比 ls_0493 细一倍多，前缘的舌状轮廓更容易辨认。",
+        "窗口只比人工框大 1.5 倍，若堆积体超出编目边界，这一段看不到。",
+        "不要把“图更清楚”当成“地质特征更强”，两张图的尺度不同。"
+      ],
+      "tags": ["中尺度"],
+      "citationLocator": "3.2.1 节（PDF 第 8 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0591",
+      "landslideId": "ls_0591",
+      "type": "SL",
+      "title": "小尺度的滑移型",
+      "subtitle": "12 例中最小的 SL",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-12",
+      "previewScale": "42.6 m/像素",
+      "observations": [
+        "42.6 m/像素让周边地形也进了画面，适合看堆积体与坡体的关系。",
+        "小目标更容易被误判成 SP：注意是否仍有远程位移，而不是只看面积。",
+        "本图幅还有 SP、CL 各一例，可做同图幅跨类型对照。"
+      ],
+      "tags": ["小尺度", "易误判"],
+      "citationLocator": "3.2.1 节（PDF 第 8 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0483",
+      "landslideId": "ls_0483",
+      "type": "SP",
+      "title": "坡脚堆积的滑塌型",
+      "subtitle": "SP 的主例",
+      "region": "水手号峡谷",
+      "tile": "E-084_N-08",
+      "previewScale": "48.9 m/像素",
+      "observations": [
+        "堆积集中在坡脚、没有远程位移，是 SP 的第一判据。",
+        "看阶梯状错动与次级平台，这是滑塌体内部结构，不是流水改造。",
+        "与同图幅 CL 案例 ls_0482 对照：一个有下部远程堆积，一个没有。"
+      ],
+      "tags": ["坡脚堆积", "阶梯状错动"],
+      "citationLocator": "3.2.2 节（PDF 第 10 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0533",
+      "landslideId": "ls_0533",
+      "type": "SP",
+      "title": "较大规模的滑塌型",
+      "subtitle": "堆积仍短促紧凑",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-08",
+      "previewScale": "63.5 m/像素",
+      "observations": [
+        "规模比 ls_0483 大一倍多，但堆积仍集中在坡脚——规模不是类型判据。",
+        "看坡脚堆积的厚度与崎岖程度，而不是面积。",
+        "若下部出现纵向脊，就要考虑改判 CL 的可能。"
+      ],
+      "tags": ["中尺度", "坡脚堆积"],
+      "citationLocator": "3.2.2 节（PDF 第 10 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0594",
+      "landslideId": "ls_0594",
+      "type": "SP",
+      "title": "图幅东侧的滑塌型",
+      "subtitle": "后壁与坡脚堆积连续",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-12",
+      "previewScale": "75.5 m/像素",
+      "observations": [
+        "从后壁到坡脚堆积是连续的，没有中间的长距离搬运段。",
+        "75.5 m/像素下图幅细节有限，适合讲结构关系，不适合讲纹理。",
+        "同图幅的 SL、FL 案例可用来做“同区域不同类型”的对照。"
+      ],
+      "tags": ["坡脚堆积"],
+      "citationLocator": "3.2.2 节（PDF 第 10 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0505",
+      "landslideId": "ls_0505",
+      "type": "FL",
+      "title": "沿坡面流动的流动型",
+      "subtitle": "FL 全库仅 50 条",
+      "region": "水手号峡谷",
+      "tile": "E-084_N-08",
+      "previewScale": "45.7 m/像素",
+      "observations": [
+        "看物源是否沿坡面汇聚、前缘是否呈扇形或叶状。",
+        "FL 数量少是解译取舍的结果（偏向规模大、形态典型者），不是分布结论。",
+        "与 SL 都有流态化特征，区别在 FL 沿沟谷/坡面汇聚成通道。"
+      ],
+      "tags": ["流态化", "选例有限"],
+      "citationLocator": "3.2.3 节（PDF 第 11—12 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0597",
+      "landslideId": "ls_0597",
+      "type": "FL",
+      "title": "小尺度流动型，细节最多",
+      "subtitle": "12 例中最小、像素最细",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-12",
+      "previewScale": "19.3 m/像素",
+      "observations": [
+        "19.3 m/像素是 12 例里最细的尺度，适合看前缘形状与通道边界。",
+        "1.85 km² 的小目标，窗口里周边环境少，不能据此判断区域分布。",
+        "“细节多”来自尺度，不来自类型本身。"
+      ],
+      "tags": ["小尺度", "高细节"],
+      "citationLocator": "3.2.3 节（PDF 第 11—12 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0688",
+      "landslideId": "ls_0688",
+      "type": "FL",
+      "title": "最大规模的流动型",
+      "subtitle": "12 例中最大的 FL，接近赤道",
+      "region": "水手号峡谷北侧",
+      "tile": "E-080_N-04",
+      "previewScale": "145.3 m/像素",
+      "observations": [
+        "145.3 m/像素能看到完整扇形轮廓，但看不到细纹理。",
+        "与 ls_0597 对照：同一类型，尺度相差 7 倍以上，图能回答的问题完全不同。",
+        "纬度接近赤道（约 0.7°S），与其余 11 例不在同一纬度带。"
+      ],
+      "tags": ["大尺度", "近赤道"],
+      "citationLocator": "3.2.3 节（PDF 第 11—12 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0482",
+      "landslideId": "ls_0482",
+      "type": "CL",
+      "title": "小尺度复合型",
+      "subtitle": "上下部机制不同",
+      "region": "水手号峡谷",
+      "tile": "E-084_N-08",
+      "previewScale": "38.4 m/像素",
+      "observations": [
+        "12.9 km² 也能是 CL：判据是机制组合，不是规模。",
+        "看上部滑塌冠部与下部滑移堆积是否同时存在。",
+        "与同图幅 SP 案例 ls_0483 对照最有说服力。"
+      ],
+      "tags": ["小尺度", "机制转换"],
+      "citationLocator": "3.2.4 节（PDF 第 12—13 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0528",
+      "landslideId": "ls_0528",
+      "type": "CL",
+      "title": "中等规模复合型",
+      "subtitle": "多期次叠加",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-08",
+      "previewScale": "119.4 m/像素",
+      "observations": [
+        "119 m/像素先看分区轮廓，再谈多期次边界。",
+        "找次级陡壁：它是分期最直接的证据。",
+        "面积 235 km²，接近 CL 最大例的一半，可做规模对照。"
+      ],
+      "tags": ["中尺度", "多期次"],
+      "citationLocator": "3.2.4 节（PDF 第 12—13 页）；表 2（第 8—9 页）"
+    },
+    {
+      "id": "case-ls-0592",
+      "landslideId": "ls_0592",
+      "type": "CL",
+      "title": "最大规模的复合型",
+      "subtitle": "12 例中最大的一条",
+      "region": "水手号峡谷",
+      "tile": "E-080_N-12",
+      "previewScale": "198.4 m/像素",
+      "observations": [
+        "198.4 m/像素是 12 例里最粗的尺度：能看完整堆积体，看不清细纹理。",
+        "先看“源区—通道—堆积区”的整体关系，再判断上下部机制。",
+        "581 km²，是 CL 主例；与 ls_0482（12.9 km²）对照同类型不同规模。"
+      ],
+      "tags": ["大尺度", "主例"],
+      "citationLocator": "3.2.4 节（PDF 第 12—13 页）；表 2（第 8—9 页）"
+    }
+  ]
+}
