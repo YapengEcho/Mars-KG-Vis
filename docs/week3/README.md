@@ -34,7 +34,7 @@
 
 ```bash
 cd mobile
-npm test          # 28 个用例，含 atlas 内容与 join 的 12 个
+npm test          # 33 个用例，含 atlas 内容/join 的 12 个与 4 个页面的服务端渲染回归
 npm run build     # vue-tsc + vite build
 cd ..
 python scripts/export_atlas_content.py --check

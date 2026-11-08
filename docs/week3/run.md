@@ -22,7 +22,7 @@ npm run dev     # http://localhost:5173/#/atlas
 
 ```powershell
 cd mobile
-npm test          # vitest：28 个用例（catalog 9 + atlas 12 + 其它 7）
+npm test          # vitest：33 个用例（catalog 9 + atlas 12 + 页面渲染 5 + 其它 7）
 npm run build     # vue-tsc --noEmit && vite build
 ```
 
