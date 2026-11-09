@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Bookmark, Crosshair, ExternalLink, X } from '@lucide/vue'
 import { useRouter } from 'vue-router'
+import ZoomableImage from './ZoomableImage.vue'
 import { atlas } from '../stores/atlas'
 import { coordinateLabel, typeInfo } from '../types'
 const router = useRouter()
@@ -53,7 +54,12 @@ async function locate() {
         </button>
       </header>
       <div class="detail-media">
-        <img v-if="image" :src="String(image)" :alt="slide.name" @error="imageFailed = true" />
+        <ZoomableImage
+          v-if="image"
+          :src="String(image)"
+          :alt="slide.name"
+          @error.capture="imageFailed = true"
+        />
         <div v-else class="contour-art">
           <Crosshair :size="33" :stroke-width="1" /><span>{{
             slide.isDemo ? '示例点位 · 非真实滑坡记录' : '暂无展示影像'
@@ -77,6 +83,10 @@ async function locate() {
         <div>
           <dt>原始编号</dt>
           <dd>{{ slide.sourceId ?? '示例记录' }}</dd>
+        </div>
+        <div>
+          <dt>边界几何</dt>
+          <dd>{{ slide.geometry ? `${slide.geometry.length} 个顶点` : '暂无' }}</dd>
         </div>
         <div>
           <dt>资料来源</dt>

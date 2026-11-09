@@ -3,10 +3,14 @@ import { ArrowUpRight, Bookmark } from '@lucide/vue'
 import type { Slide } from '../types'
 import { typeInfo, coordinateLabel } from '../types'
 import { atlas } from '../stores/atlas'
-defineProps<{ slide: Slide; compact?: boolean }>()
+defineProps<{ slide: Slide; compact?: boolean; highlighted?: boolean }>()
 </script>
 <template>
-  <article class="slide-card" :class="{ compact }">
+  <article
+    class="slide-card"
+    :class="{ compact, 'is-highlighted': highlighted }"
+    :data-slide-id="slide.id"
+  >
     <button
       class="slide-card-main"
       @click="atlas.select(slide.id)"

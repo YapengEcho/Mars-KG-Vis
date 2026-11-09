@@ -1145,3 +1145,196 @@ main {
     animation: none !important;
   }
 }
+
+/* Week 3: zoomable detail imagery */
+.zoom-viewer {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  cursor: zoom-in;
+}
+.zoom-viewer.is-zoomed {
+  cursor: grab;
+}
+.zoom-viewer.is-dragging {
+  cursor: grabbing;
+}
+.zoom-viewer img {
+  transform-origin: center;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+  transition: transform 120ms ease-out;
+}
+.zoom-viewer.is-dragging img,
+.zoom-viewer.is-zoomed img {
+  transition: none;
+}
+.zoom-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 32px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #131b28e6;
+  backdrop-filter: blur(8px);
+}
+.zoom-controls .icon-button {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+.zoom-controls .icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.zoom-level {
+  min-width: 38px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.zoom-hint {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  margin: 0;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Week 3: geometry toggle and coordinate locator */
+.globe-tools .icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.globe-tools .icon-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: #86b6ff14;
+}
+.globe-geometry-status {
+  position: absolute;
+  left: 0;
+  bottom: 36px;
+  margin: 0;
+  font-size: 10px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.coordinate-panel {
+  position: absolute;
+  left: 0;
+  right: 52px;
+  bottom: 52px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #131b28f2;
+  backdrop-filter: blur(10px);
+}
+.coordinate-panel label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.coordinate-panel input {
+  width: 76px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.coordinate-panel input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.coordinate-panel .secondary-button {
+  min-height: 30px;
+  padding: 0 14px;
+  font-size: 11px;
+}
+.coordinate-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #e8c79f;
+}
+
+/* Week 3: dense points and favourites review */
+.focus-hint .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 0;
+  font-size: 10px;
+}
+.focus-hint-note {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+}
+.dense-note {
+  margin: -4px 0 13px;
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.slide-card.is-highlighted {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px #86b6ff44;
+}
+.save-note {
+  font-size: 10px;
+  color: var(--muted);
+}
+.storage-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 13px;
+  padding: 9px 12px;
+  border: 1px solid #7f6341;
+  border-radius: 8px;
+  background: #8c63321f;
+  color: #e8c79f;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.storage-warning .text-button {
+  padding: 0;
+  color: #f0d3ae;
+  text-decoration: underline;
+}
+@media (max-width: 620px) {
+  .coordinate-panel {
+    right: 46px;
+    left: 0;
+    padding: 9px 10px;
+  }
+  .coordinate-panel input {
+    width: 64px;
+  }
+}

@@ -24,7 +24,26 @@ const state = reactive({
 export const atlas = {
   state,
   selected: computed(() => state.catalog.records.find((r) => r.id === state.selectedId)),
-  saved: computed(() => state.catalog.records.filter((r) => state.savedIds.includes(r.id))),
+  saved: computed(() =>
+    [...state.savedIds]
+      .reverse()
+      .map((id) => state.catalog.records.find((r) => r.id === id))
+      .filter((r): r is Slide => Boolean(r)),
+  ),
+  /** Collected ids that no longer exist in the currently loaded catalog. */
+  missingSaved: computed(() =>
+    state.savedIds.filter((id) => !state.catalog.records.some((r) => r.id === id)),
+  ),
+  pruneSaved() {
+    const next = state.savedIds.filter((id) => state.catalog.records.some((r) => r.id === id))
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(next))
+      state.savedIds = next
+      state.storageError = ''
+    } catch {
+      state.storageError = '当前设备无法保存收藏，请检查存储权限。'
+    }
+  },
   select(id: string) {
     state.selectedId = id
   },

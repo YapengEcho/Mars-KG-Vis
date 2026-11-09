@@ -1,5 +1,7 @@
 export const slideTypes = ['SL', 'SP', 'FL', 'CL'] as const
 export type SlideType = (typeof slideTypes)[number]
+/** Closed boundary ring as [longitude, latitude] pairs, east-positive degrees. */
+export type Ring = [number, number][]
 export interface Slide {
   id: string
   sourceId: number | null
@@ -10,6 +12,7 @@ export interface Slide {
   areaKm2: number | null
   summary: string
   imageUrl: string | null
+  geometry: Ring | null
   source: { title: string; url: string | null }
   isDemo: boolean
 }

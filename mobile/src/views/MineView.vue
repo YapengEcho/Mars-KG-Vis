@@ -14,7 +14,12 @@ import { atlas } from '../stores/atlas'
 
     <div class="section-heading">
       <h2>我的收藏 <span>{{ atlas.saved.value.length }}</span></h2>
+      <span class="save-note">仅保存在本机 · 最近收藏在前</span>
     </div>
+    <p v-if="atlas.missingSaved.value.length" class="storage-warning" role="status">
+      另有 {{ atlas.missingSaved.value.length }} 条收藏不在当前目录中（可能来自其他目录或已删除）。
+      <button class="text-button" @click="atlas.pruneSaved()">清理失效收藏</button>
+    </p>
     <div v-if="atlas.saved.value.length" class="record-list">
       <SlideCard v-for="slide in atlas.saved.value" :key="slide.id" :slide="slide" />
     </div>
