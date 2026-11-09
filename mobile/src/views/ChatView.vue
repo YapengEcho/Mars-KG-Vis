@@ -1,29 +1,20 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { LoaderCircle, MapPin, ScanLine, Send, Sparkles } from '@lucide/vue'
 import SlideCard from '../components/SlideCard.vue'
-import { fetchCapabilities, sendChatMessage } from '../services/api'
-import type { AgentAction, ChatResponse } from '../services/api'
-import { buildChatHistory } from '../lib/chatHistory'
-interface UIMessage {
-  role: 'user' | 'assistant'
-  content: string
-  records?: ChatResponse['records']
-  citations?: ChatResponse['citations']
-  actions?: AgentAction[]
-  status?: ChatResponse['status']
-}
+import { fetchCapabilities } from '../services/api'
+import type { AgentAction } from '../services/api'
+import { chat } from '../stores/chat'
 const router = useRouter()
-const WELCOME_MESSAGE =
-  '你好，我是火星滑坡助手。可以问我：某类滑坡有哪些、数量统计、类型与案例资料，或让我把某个点位定位到地图上。'
-const thread = ref<UIMessage[]>([{ role: 'assistant', content: WELCOME_MESSAGE }])
 const draft = ref('')
-const busy = ref(false)
-const error = ref('')
 const agentReady = ref<boolean | null>(null)
 const scrollEl = ref<HTMLElement>()
+const thread = computed(() => chat.state.thread)
+const busy = computed(() => chat.state.busy)
+const error = computed(() => chat.state.error)
 onMounted(async () => {
+  await scrollToEnd()
   try {
     const capabilities = await fetchCapabilities()
     agentReady.value = capabilities?.agent?.available ?? null
@@ -38,35 +29,16 @@ async function scrollToEnd() {
 }
 async function send() {
   const text = draft.value.trim()
-  if (!text || busy.value) return
-  error.value = ''
-  thread.value.push({ role: 'user', content: text })
+  if (!text || chat.state.busy) return
   draft.value = ''
-  busy.value = true
   await scrollToEnd()
-  try {
-    const history = buildChatHistory(thread.value)
-    const response = await sendChatMessage(history)
-    thread.value.push({
-      role: 'assistant',
-      content: response.answer,
-      records: response.records,
-      citations: response.citations,
-      actions: response.actions,
-      status: response.status,
-    })
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : '发送失败，请稍后重试'
-  } finally {
-    busy.value = false
-    await scrollToEnd()
-  }
+  await chat.send(text)
+  await scrollToEnd()
 }
 function resetThread() {
-  if (busy.value) return
-  thread.value = [{ role: 'assistant', content: WELCOME_MESSAGE }]
+  if (chat.state.busy) return
+  chat.reset()
   draft.value = ''
-  error.value = ''
   scrollToEnd()
 }
 function runAction(action: AgentAction) {

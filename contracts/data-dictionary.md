@@ -72,7 +72,7 @@
 | 滑坡点 | `ORIG_FID` | 原始要素 ID，仅供追溯 |
 | 边界 | 几何 | `PolygonZ`，Z 值全为 0（无高程信息） |
 
-## 3. 坐标约定：经度已核，纬度待核准
+## 3. 坐标约定：经度已核，纬度未核（默认原样保留）
 
 ### 3.1 已核实
 
@@ -83,32 +83,44 @@
    计算面积与周长（`AREA_GEODESIC` / `PERIMETER_LENGTH_GEODESIC`）。这是**球体**（扁率 0，半径 3396190 m），与影像裁片窗口坐标（`native_window_world_m`，按 R=3396190 换算经度正好落在 4° 图幅边界）互相印证。
 4. **图片窗口同一坐标系**：`native_window_world_m` 与 `manual_box_world_m` 都是火星等距圆柱平面坐标，单位为米。
 
-### 3.2 未核准
+### 3.2 未核准：纬度约定（planetocentric vs planetographic）
 
-`latitude` 究竟是**行星心纬度（planetocentric）**还是**行星面纬度（planetographic）**，现有文件**不能认证**：
+论文正文没有写纬度约定；`.prj` 写成 `GCS_WGS_1984` 是错误标注（不能据此做地球投影转换）；面积用球体计算也不反推输入约定。**目前没有任何一手材料能证明编目用的是行星面纬度，因此不做换算。**
 
-- 原始 `.prj` 写的是 `GCS_WGS_1984`（地球椭球 6378137 m、扁率 1/298.257），对火星数据是错误标注，**不能拿它当依据**，也不能据此做地球投影转换。
-- 论文正文未声明纬度约定；图 2 只给经纬网。
-- 上面第 3 条只能说“面积是按火星球体算的”，球体上没有面纬度可言，但这不能反推**输入坐标**一定是行星心纬度。
+对照 1083 个人工框（框在本地 CTX 投影下，行星心）得到直接证据：
 
-### 3.3 影响量化
+| 判据 | 原值 | 若按行星面→行星心换算 |
+|---|---|---|
+| 点位落在所属边界多边形内 | 越界 4 / 2971 | 越界 2271 / 2971 |
+| 点位落在人工取图框内 | 越界 3 / 1083 | 越界 739 / 1083（**736 个原本在框内的点被移出**） |
 
-若实际是行星面纬度而 APP 按行星心纬度渲染，纬度方向最大偏差：
+复现：`python scripts/compare_latitude_conventions.py --handoff PATH`。
 
-| 统计 | 值 |
+### 3.3 换算规则：可选，默认关闭
+
+`api.schemas.CoordinateSystem` 只接受 `planetocentric, degrees`，公开底图（MOLA 463 m、MDIM 2.1）也是行星心纬度；一旦约定核实为行星面，需要在导出边界显式换算（行星面直接入库最多偏 **0.338°**，约 20 km）。三个脚本共用同一个参数 `--latitude-convention`，取值 `unverified`（默认）/ `planetocentric` / `planetographic`，保证“报告说的”和“写进去的”是同一个口径。
+
+| 项 | 值 |
 |---|---|
-| 全表最大偏差 | 0.34° |
-| 中位偏差 | 0.10° |
-| 45°N/S 附近 | 约 0.25°（≈15 km） |
+| 默认 | `unverified`：数值原样保留，只能导出 staging |
+| 换算触发 | 显式 `--latitude-convention planetographic` + `--coordinate-evidence` |
+| 椭球 | IAU 2000 Mars：a = 3 396 190 m，b = 3 376 200 m（1/f = 169.894），扁率 0.005886 |
+| 公式 | `lat_c = atan((b/a)² · tan(lat_g))`，`(b/a)² = 0.98826361` |
+| 实现 | `scripts/mars_latitude.py`（`to_export_latitude` / `planetographic_to_planetocentric` / `describe()`） |
+| 全表影响 | 换算时 2971 条全部位移；最大 0.3382°，平均 0.10° |
+| 记录位置 | 导出清单 `latitudeConversion`（from/to/applied/翻转条数/最大最小位移） |
 
-这个量级在球体缩放到区域时会明显偏点位，**不能忽略，也不能拍脑袋转换**。
+注意三点：
 
-### 3.4 核准步骤（待执行，结论回填本文件 v2）
+1. **换算只在导出边界发生**，`01_catalog/mars_landslides.json` 原始文件保持老师给的值，不改源数据。
+2. **取图框不跟着换算**：`image_index.json` 的 `native_window_world_m` 来自本地 CTX 配套投影（行星心），按自身坐标定义原样使用；案例映射里的 `highResolution` 框不做转换，`source.windowFrame` 记录这一点。
+3. **准入报告与导出同参数**：`admission_report.run(..., latitude_convention=...)` 由导出脚本传入同一个值，报告中的 `latitude_convention`、`latitudeConversion`、`manual_boxes` 三处一致。
 
-1. 在 NASA Mars Trek 或 ArcGIS Pro 火星底图上取 5 个可识别地标（如 Olympus Mons 峰顶、Gale 撞击坑中心），分别用 planetocentric / planetographic 两套显示对比。
-2. 从编目里挑这 5 个地标附近、边界清晰的记录，比较点位与地标边缘的相对位置，记录偏差方向。
-3. 向老师索取编目工程的坐标说明或出图设置截图；以上三条任一成立即写“已核准”，否则维持“待核准”。
-4. 核准前：真实目录只放本地 `mobile/public/data/catalog.local.json`，**不进默认打包产物**；APP 内标注“坐标约定待核准”。
+### 3.4 常见误解（留档）
+
+- 只改 `coordinateSystem.latitude` 字段文字而不换算数值，会让下游以为已经对齐的，**属于错误做法**。
+- 反过来把行星心纬度的数据再换算一次，会让点位往北/南多偏 20 km；本清单一旦换算会有 736 个点移出人工框，所以**默认不换算**。
+- “老师说过用行星面”不足以作为依据：本仓库只接受写在 `coordinateEvidence` 里、可追溯到时间与来源的确认；在此之前一律 `unverified`。
 
 ## 4. 图片与几何的对应
 
@@ -146,7 +158,7 @@
 
 | 事项 | 现状 | 需要谁 | 影响 |
 |---|---|---|---|
-| 纬度约定（planetocentric / planetographic） | 待核准 | 老师 + 崔亚鹏 | 点位偏差最大 0.34°，阻塞真实目录上架 |
+| 纬度约定（planetocentric / planetographic） | **未核准**：论文、`.prj`、面积算法都给不出结论。默认 `unverified`，坐标原样保留、只出 `staging`；换算能力保留在 `mars_latitude.py`，需书面依据 + 显式参数 | 老师 + 崔亚鹏 | 仍是上架（`ready`）的唯一阻塞；对照 1083 个人工框，换算会移出 736 个点 |
 | 224 裁片的重采样方式与窗口规则 | 只有窗口坐标，无处理脚本 | 崔亚鹏 | 影响“高清图替换预览图”的一致性 |
 | `perimeter` 的单位 | 主表无单位说明 | 崔亚鹏 | 只影响附加字段 |
 | 边界是人工解译还是由点/面积生成 | 元数据未说明 | 老师 | 决定能否用于分割验收 |

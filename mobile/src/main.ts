@@ -9,6 +9,13 @@ const router = createRouter({
   routes: [
     { path: '/', component: ExploreView },
     { path: '/atlas', component: () => import('./views/AtlasView.vue') },
+    { path: '/atlas/compare', component: () => import('./views/AtlasCompareView.vue') },
+    {
+      path: '/atlas/type/:type',
+      component: () => import('./views/AtlasTypeView.vue'),
+      props: true,
+    },
+    { path: '/atlas/case/:id', component: () => import('./views/AtlasCaseView.vue'), props: true },
     { path: '/recognize', component: () => import('./views/IdentifyView.vue') },
     { path: '/chat', component: () => import('./views/ChatView.vue') },
     { path: '/mine', component: () => import('./views/MineView.vue') },

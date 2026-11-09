@@ -4,9 +4,11 @@ from contextlib import asynccontextmanager
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from api.sqlite_store import load_sqlite_catalog
+from api.catalog_query import Bounds, filter_records, parse_bbox
+from api.content_routes import router as content_router
 
 from api.agent import llm
 from api.agent.records import TraceRecorder
@@ -51,31 +53,15 @@ def get_catalog(request: Request) -> Catalog:
     return request.app.state.catalog
 
 
-def filter_records(
-    catalog: Catalog, q: str | None = None, slide_type: SlideType | None = None
-) -> list[Slide]:
-    records = catalog.records
-    if slide_type:
-        records = [record for record in records if record.type == slide_type]
-    term = (q or "").strip().casefold()
-    if term:
-        records = [
-            record
-            for record in records
-            if term
-            in " ".join(
-                (
-                    record.id,
-                    str(record.sourceId) if record.sourceId is not None else "",
-                    record.name,
-                    record.summary,
-                )
-            ).casefold()
-        ]
-    return records
+def query_bounds(bbox: str | None = Query(default=None, max_length=160)) -> Bounds | None:
+    try:
+        return parse_bbox(bbox)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail={"code": "INVALID_BBOX", "message": str(error)}) from error
 
 
-def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None) -> FastAPI:
+def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None,
+               asset_root: str | Path | None = None) -> FastAPI:
     if database_path is not None and catalog_path is not None:
         raise ValueError("Choose a catalog file or a database, not both")
     selected_database = database_path or (os.environ.get("MARS_DB_PATH") if catalog_path is None else None)
@@ -91,6 +77,9 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         )
         application.state.retriever = build_retriever()
         application.state.tracer = TraceRecorder()
+        application.state.content_database = Path(selected_database).resolve() if selected_database else None
+        configured_root = asset_root or os.environ.get('MARS_ASSET_ROOT')
+        application.state.asset_root = Path(configured_root).expanduser().resolve() if configured_root else None
         yield
 
     application = FastAPI(
@@ -99,6 +88,7 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         description="Mars catalog browsing and service capabilities.",
         lifespan=lifespan,
     )
+    application.include_router(content_router)
     default_origins = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:4173,http://127.0.0.1:4173,"
@@ -132,11 +122,12 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         request: Request,
         q: str | None = Query(default=None, max_length=200),
         type: SlideType | None = None,
+        bounds: Bounds | None = Depends(query_bounds),
         page: int = Query(default=1, ge=1),
         pageSize: int = Query(default=20, ge=1, le=100),
     ):
         catalog = get_catalog(request)
-        records = filter_records(catalog, q, type)
+        records = filter_records(catalog, q, type, bounds)
         start = (page - 1) * pageSize
         return SlidePage(
             items=records[start : start + pageSize],
@@ -162,9 +153,10 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         request: Request,
         q: str | None = Query(default=None, max_length=200),
         type: SlideType | None = None,
+        bounds: Bounds | None = Depends(query_bounds),
     ):
         catalog = get_catalog(request)
-        records = filter_records(catalog, q, type)
+        records = filter_records(catalog, q, type, bounds)
         counts = {kind: 0 for kind in ("SL", "SP", "FL", "CL")}
         for record in records:
             counts[record.type] += 1

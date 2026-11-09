@@ -12,7 +12,7 @@ export interface Slide {
   areaKm2: number | null
   summary: string
   imageUrl: string | null
-  geometry: Ring | null
+  geometry?: Ring | null
   source: { title: string; url: string | null }
   isDemo: boolean
 }

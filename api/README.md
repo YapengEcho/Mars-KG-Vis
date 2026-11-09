@@ -18,6 +18,13 @@ python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 | `GET /api/stats` | 类型统计，支持与列表相同的 `q`、`type` |
 | `GET /api/capabilities` | 分类、检测服务可用状态 |
 | `POST /api/landslide/classify` | 分类入口，当前返回 `503 MODEL_NOT_CONFIGURED` |
+| `GET /api/atlas`、`GET /api/atlas/{type}` | 已发布图鉴与类型对比 |
+| `GET /api/cases`、`GET /api/cases/{id}` | 案例、目录记录、引用及资源链接 |
+| `GET /api/documents`、`GET /api/documents/{id}` | 文献来源及引用说明 |
+| `GET /api/assets/{id}`、`GET /api/assets/{id}/content` | 资源元数据及受限预览图 |
+| `GET /api/landslides/{id}/geometry` | 已登记的单个点／面几何及坐标状态 |
+
+图鉴导入、资源根目录配置与坐标状态见 [内容接口约定](../contracts/content.md)。JSON演示模式返回空内容列表；真实素材继续私下交接。
 
 默认读取 `examples/catalog.demo.json`，所有记录均为合成演示数据。设置环境变量 `MARS_CATALOG_PATH` 可读取同结构的本地 JSON；目录在服务启动时校验，修改后需重启。经纬度采用目录声明的火星坐标，原值返回。不存在的记录返回 404，非法查询参数返回 422。
 

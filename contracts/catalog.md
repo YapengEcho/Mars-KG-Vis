@@ -74,3 +74,16 @@ python scripts/export_catalog.py --input PATH_TO_CATALOG --output mobile/public/
 | `POST /api/landslide/classify` | 当前返回503 `MODEL_NOT_CONFIGURED` |
 
 后续单图分类使用multipart字段 `file`；成功结果约定包含 `prediction`、`probabilities`、`confidence`、`uncertain` 和 `modelVersion`。检测服务另接任务接口，不把单图分类当作大图检测。
+
+## 范围查询与 Agent 一致性（第2周）
+
+`GET /api/landslides` 与 `GET /api/stats` 同时支持可选参数 `bbox=west,south,east,north`，单位为目录坐标系的度。四个值必须同时给出，均须有限且在经纬度范围内，南界不得大于北界。边界包含在查询内，范围筛选依据记录点位，不代表多边形相交查询。
+
+- 普通区域：`bbox=-100,-30,-40,30`。
+- 跨180°经线：`bbox=170,-10,-170,10`，西界大于东界表示跨经线。
+- 全球：`bbox=-180,-90,180,90`。等值经度范围仅匹配该经线，不代表全球。
+- 可以与 `q`、`type` 组合；统计在分页前计算。非法范围返回422 `INVALID_BBOX`。
+
+Agent 的 `search_catalog`、`get_stats` 使用同一个查询函数，接受同格式 `bbox`。`search_catalog` 的 `limit` 为1—100整数，`offset` 为非负整数，便于继续读取；两工具返回同一数据版本 `version`。未配置LLM不影响目录HTTP接口与这些工具函数的本地验收。
+
+APP联调时统一配置 `VITE_API_BASE_URL`，移除指向另一份数据的 `VITE_CATALOG_URL` 覆盖项。手机端实际网络请求与地图交互仍需真机验证，不能用后端测试代替。

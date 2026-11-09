@@ -1,8 +1,14 @@
 """Simple keyword retriever for guidebook / case documents.
 The Retriever exposes a single ``search`` method so the implementation can
 later be swapped for vector retrieval without touching the agent loop.
+
+Scoring is IDF-weighted: a term that appears in many documents (such as 滑坡)
+contributes little, while a rare term (such as 编目 or 体积效应) dominates. Both
+the title bonus and the body counts use the weight, and body counts grow
+logarithmically so long documents cannot win by sheer repetition.
 """
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 @dataclass
@@ -21,19 +27,37 @@ def _query_terms(query: str) -> list[str]:
     # CJK character bigrams give sub-word matching without a segmentation library.
     terms.update(q[i : i + 2] for i in range(max(0, len(q) - 1)) if q[i : i + 2].strip())
     return [t for t in terms if t]
-def _count(haystack: str, terms: list[str]) -> int:
-    low = haystack.casefold()
-    return sum(low.count(t) for t in terms)
 class KeywordRetriever:
     def __init__(self, docs: list[Doc] | None = None):
         self.docs = docs or []
+        self._df: dict[str, int] | None = None
+    def _build_df(self) -> None:
+        self._df = {}
+        for doc in self.docs:
+            for term in set(_query_terms(doc.title + " " + doc.text)):
+                self._df[term] = self._df.get(term, 0) + 1
+    def _idf(self, term: str) -> float:
+        if self._df is None:
+            self._build_df()
+        total = len(self.docs) or 1
+        df = self._df.get(term, 0)
+        return math.log((total + 1) / (df + 1)) + 1.0
     def search(self, query: str, doc_type: str | None = None, limit: int = 5) -> list[Doc]:
-        terms = _query_terms(query)
+        terms = set(_query_terms(query))
         scored = []
         for doc in self.docs:
             if doc_type and doc.doc_type != doc_type:
                 continue
-            score = _count(doc.title, terms) * 3 + _count(doc.text, terms)
+            title = doc.title.casefold()
+            text = doc.text.casefold()
+            score = 0.0
+            for term in terms:
+                weight = self._idf(term)
+                if term in title:
+                    score += 3.0 * weight
+                occurrences = text.count(term)
+                if occurrences:
+                    score += weight * (1.0 + math.log(occurrences))
             if score > 0:
                 scored.append((score, doc))
         scored.sort(key=lambda item: item[0], reverse=True)
