@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from api.sqlite_store import load_sqlite_catalog
 from api.catalog_query import Bounds, filter_records, parse_bbox
+from api.content_routes import router as content_router
 
 from api.agent import llm
 from api.agent.records import TraceRecorder
@@ -59,7 +60,8 @@ def query_bounds(bbox: str | None = Query(default=None, max_length=160)) -> Boun
         raise HTTPException(status_code=422, detail={"code": "INVALID_BBOX", "message": str(error)}) from error
 
 
-def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None) -> FastAPI:
+def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None,
+               asset_root: str | Path | None = None) -> FastAPI:
     if database_path is not None and catalog_path is not None:
         raise ValueError("Choose a catalog file or a database, not both")
     selected_database = database_path or (os.environ.get("MARS_DB_PATH") if catalog_path is None else None)
@@ -75,6 +77,9 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         )
         application.state.retriever = build_retriever()
         application.state.tracer = TraceRecorder()
+        application.state.content_database = Path(selected_database).resolve() if selected_database else None
+        configured_root = asset_root or os.environ.get('MARS_ASSET_ROOT')
+        application.state.asset_root = Path(configured_root).expanduser().resolve() if configured_root else None
         yield
 
     application = FastAPI(
@@ -83,6 +88,7 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         description="Mars catalog browsing and service capabilities.",
         lifespan=lifespan,
     )
+    application.include_router(content_router)
     default_origins = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:4173,http://127.0.0.1:4173,"

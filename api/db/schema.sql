@@ -63,4 +63,9 @@ CREATE TABLE recognition_tasks (
     input_asset_id TEXT REFERENCES assets(id), model_version TEXT,
     created_at TEXT NOT NULL, finished_at TEXT, result_json TEXT, error_code TEXT
 );
+-- Optional additive content store; legacy version-1 catalogs remain readable.
+CREATE TABLE atlas_content (
+    kind TEXT NOT NULL CHECK(kind IN ('type','case','comparison')),
+    id TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY(kind,id)
+);
 PRAGMA user_version = 1;
