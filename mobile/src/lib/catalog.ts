@@ -1,27 +1,6 @@
-import type { Catalog, Ring, Slide, SlideType } from '../types'
+import type { Catalog, Slide, SlideType } from '../types'
 import { slideTypes } from '../types'
 import { angularDistance, surfaceDistanceKm } from './marsCoordinates'
-
-/** Returns a validated closed ring, or null when the value is absent/invalid. */
-export function parseRing(value: unknown): Ring | null {
-  if (!Array.isArray(value) || value.length < 3) return null
-  const ring: Ring = []
-  for (const point of value) {
-    if (!Array.isArray(point) || point.length !== 2) return null
-    const [longitude, latitude] = point
-    if (
-      typeof longitude !== 'number' ||
-      typeof latitude !== 'number' ||
-      !Number.isFinite(longitude) ||
-      Math.abs(longitude) > 180 ||
-      !Number.isFinite(latitude) ||
-      Math.abs(latitude) > 90
-    )
-      return null
-    ring.push([longitude, latitude])
-  }
-  return ring
-}
 
 export function parseCatalog(value: unknown): Catalog {
   if (!value || typeof value !== 'object') throw new Error('目录格式无效')
@@ -81,13 +60,6 @@ export function parseCatalog(value: unknown): Catalog {
         (!r.imageUrl.startsWith('/') && !r.imageUrl.startsWith('https://')))
     )
       throw new Error('影像地址无效')
-    if (r.geometry !== undefined && r.geometry !== null) {
-      const ring = parseRing(r.geometry)
-      if (!ring) throw new Error('边界几何无效')
-      r.geometry = ring
-    } else {
-      r.geometry = null
-    }
     ids.add(r.id)
   }
   return c as Catalog

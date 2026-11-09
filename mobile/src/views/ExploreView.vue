@@ -16,6 +16,8 @@ import MarsGlobe from '../components/MarsGlobe.vue'
 import SlideCard from '../components/SlideCard.vue'
 import { atlas } from '../stores/atlas'
 import { crowdedSlideIds, filterSlides, findSlide, nearestSlide, neighborsOf } from '../lib/catalog'
+import { parseSlideGeometry, type Ring } from '../lib/geometry'
+import { apiBase, fetchSlideGeometry } from '../services/api'
 import { formatMarsCoordinate, isMarsCoordinate } from '../lib/marsCoordinates'
 import { slideTypes, typeInfo } from '../types'
 import type { Slide, SlideType } from '../types'
@@ -39,6 +41,11 @@ const latitudeInput = ref('')
 const coordinateNote = ref('')
 const neighbors = ref<Slide[]>([])
 const neighborIndex = ref(0)
+const geometryRing = ref<Ring | null>(null)
+const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>(
+  'idle',
+)
+let geometryRequest = 0
 const matches = computed(() => filterSlides(atlas.state.catalog.records, query.value, type.value))
 const visible = computed(() => matches.value.slice(0, visibleCount.value))
 const remaining = computed(() => Math.max(0, matches.value.length - visible.value.length))
@@ -47,7 +54,6 @@ const focusedRecord = computed(
     matches.value.find((item) => item.id === focusedId.value) ??
     atlas.state.catalog.records.find((item) => item.id === focusedId.value),
 )
-const geometry = computed(() => focusedRecord.value?.geometry ?? null)
 const crowdedCount = computed(() => crowdedSlideIds(matches.value, overlapDegrees).size)
 const modeLabel = computed(() =>
   atlas.state.catalog.mode === 'catalog'
@@ -64,12 +70,57 @@ const basemapNote = computed(
 )
 const geometryLabel = computed(() => {
   if (!focusedRecord.value) return '边界几何：未选点位'
-  if (!geometry.value) return '边界几何：当前记录暂无'
-  return showGeometry.value ? '边界几何：已显示' : '边界几何：已隐藏'
+  return {
+    idle: '边界几何：未选点位',
+    loading: '边界几何：正在加载…',
+    ready: showGeometry.value ? '边界几何：已显示' : '边界几何：已隐藏',
+    blocked: '边界几何：坐标系未确认，暂不叠加',
+    missing: '边界几何：当前记录暂无',
+    offline: '边界几何：未连接数据服务',
+  }[geometryState.value]
 })
 watch([query, type], () => {
   visibleCount.value = pageSize
 })
+watch(
+  focusedId,
+  async (id) => {
+    geometryRequest += 1
+    const request = geometryRequest
+    geometryRing.value = null
+    if (!id) {
+      geometryState.value = 'idle'
+      return
+    }
+    if (!apiBase) {
+      geometryState.value = 'offline'
+      return
+    }
+    geometryState.value = 'loading'
+    try {
+      const payload = await fetchSlideGeometry(id)
+      if (request !== geometryRequest) return
+      if (!payload) {
+        geometryState.value = 'missing'
+        return
+      }
+      const parsed = parseSlideGeometry(payload)
+      if (!parsed) {
+        geometryState.value = 'missing'
+        return
+      }
+      if (!parsed.canOverlay) {
+        geometryState.value = 'blocked'
+        return
+      }
+      geometryRing.value = parsed.ring
+      geometryState.value = 'ready'
+    } catch {
+      if (request === geometryRequest) geometryState.value = 'offline'
+    }
+  },
+  { immediate: true },
+)
 function revealCard(id: string): void {
   const index = matches.value.findIndex((item) => item.id === id)
   if (index >= visibleCount.value) visibleCount.value = index + 1
@@ -225,7 +276,7 @@ function locateCoordinate() {
         ref="globe"
         :points="matches"
         :selected-id="focusedId"
-        :geometry="geometry"
+        :geometry="geometryRing"
         :show-geometry="showGeometry"
         @select="select"
         @basemap="basemap = $event"
@@ -237,7 +288,7 @@ function locateCoordinate() {
           <Minus :size="20" /></button
         ><button
           class="icon-button"
-          :disabled="!geometry"
+          :disabled="geometryState !== 'ready'"
           aria-label="显示或隐藏当前记录的边界几何"
           :aria-pressed="showGeometry"
           :title="geometryLabel"

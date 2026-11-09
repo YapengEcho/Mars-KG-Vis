@@ -85,10 +85,6 @@ async function locate() {
           <dd>{{ slide.sourceId ?? '示例记录' }}</dd>
         </div>
         <div>
-          <dt>边界几何</dt>
-          <dd>{{ slide.geometry ? `${slide.geometry.length} 个顶点` : '暂无' }}</dd>
-        </div>
-        <div>
           <dt>资料来源</dt>
           <dd>
             <a

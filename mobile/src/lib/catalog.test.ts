@@ -6,7 +6,6 @@ import {
   nearestSlide,
   neighborsOf,
   parseCatalog,
-  parseRing,
 } from './catalog'
 import type { Slide } from '../types'
 import demo from '../../../examples/catalog.demo.json'
@@ -19,7 +18,6 @@ function record(overrides: Partial<Slide> & Pick<Slide, 'id' | 'longitude' | 'la
     areaKm2: null,
     summary: '',
     imageUrl: null,
-    geometry: null,
     source: { title: '测试来源', url: null },
     isDemo: true,
     ...overrides,
@@ -105,28 +103,6 @@ describe('catalog boundary', () => {
     expect(findSlide([real], 'REAL-001')?.id).toBe('REAL-001')
     expect(findSlide([real], '100')).toBeUndefined()
     expect(findSlide([real], ' ')).toBeUndefined()
-  })
-  it('keeps only well-formed boundary rings', () => {
-    expect(
-      parseRing([
-        [10, 20],
-        [11, 20],
-        [11, 21],
-      ]),
-    ).toHaveLength(3)
-    expect(parseRing([[10, 20], [11, 20]])).toBeNull()
-    expect(parseRing([[10, 91], [11, 20], [11, 21]])).toBeNull()
-    expect(parseRing([[10, 20], [11, 20], ['a', 21]])).toBeNull()
-  })
-  it('rejects an invalid boundary ring instead of drawing it', () => {
-    const catalog = structuredClone(demo)
-    ;(catalog.records[0] as unknown as Record<string, unknown>).geometry = [[0, 0]]
-    expect(() => parseCatalog(catalog)).toThrow()
-  })
-  it('parses demo rings and leaves records without geometry empty', () => {
-    const records = parseCatalog(demo).records
-    expect(records[0]?.geometry).toHaveLength(5)
-    expect(records[5]?.geometry).toBeNull()
   })
   it('finds the nearest record to a coordinate', () => {
     const records = [

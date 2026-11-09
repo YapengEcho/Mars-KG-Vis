@@ -8,7 +8,8 @@ import {
   lonLatToCartesian,
   normalizeLongitude,
 } from '../lib/marsCoordinates'
-import { typeInfo, type Ring, type SlideType } from '../types'
+import { typeInfo, type SlideType } from '../types'
+import type { Ring } from '../lib/geometry'
 
 interface GlobePoint {
   id: string
