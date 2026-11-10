@@ -6,10 +6,12 @@ import { atlas } from '../stores/atlas'
 import { atlasContent, caseById, caseRecord, casesOfType, typeEntry } from '../lib/atlas'
 import { coordinateLabel, typeInfo } from '../types'
 import { sampleById } from '../lib/samples'
+import { coordinateStatus } from '../lib/coordinateStatus'
 import ZoomableImage from '../components/ZoomableImage.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
+const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
 const item = computed(() => caseById(props.id))
 const sample = computed(() => (item.value ? sampleById(item.value.landslideId) : undefined))
 const entry = computed(() => (item.value ? typeEntry(item.value.type) : undefined))
@@ -72,7 +74,7 @@ function locate() {
         </div>
         <div>
           <dt>
-            {{ atlas.state.catalog.mode === 'reference' ? '原始坐标 · 待核准' : '火星经纬度' }}
+            {{ coordinates.label }}
           </dt>
           <dd>{{ coordinateLabel(record.longitude, record.latitude) }}</dd>
         </div>
@@ -96,6 +98,7 @@ function locate() {
         </div>
       </dl>
       <p v-else class="notice">{{ item.landslideId }} 尚未包含在公开目录中。</p>
+      <p v-if="record && coordinates.note" class="muted">{{ coordinates.note }}</p>
 
       <div class="case-actions">
         <button class="primary-button" :disabled="!record" @click="locate">

@@ -6,8 +6,10 @@ import ZoomableImage from './ZoomableImage.vue'
 import { atlas } from '../stores/atlas'
 import { coordinateLabel, typeInfo } from '../types'
 import { sampleById } from '../lib/samples'
+import { coordinateStatus } from '../lib/coordinateStatus'
 const router = useRouter()
 const slide = atlas.selected
+const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
 const dialog = ref<HTMLDialogElement>()
 const imageFailed = ref(false)
 const image = computed(() => !imageFailed.value && slide.value?.imageUrl)
@@ -91,7 +93,7 @@ async function locate() {
         <dl class="detail-grid">
           <div>
             <dt>
-              {{ atlas.state.catalog.mode === 'reference' ? '原始坐标 · 待核准' : '火星经纬度' }}
+              {{ coordinates.label }}
             </dt>
             <dd>{{ coordinateLabel(slide.longitude, slide.latitude) }}</dd>
           </div>
@@ -118,9 +120,7 @@ async function locate() {
             </dd>
           </div>
         </dl>
-        <p v-if="atlas.state.catalog.mode === 'reference'">
-          纬度约定尚未核准，当前未做转换，仅供位置参考。
-        </p>
+        <p v-if="coordinates.note">{{ coordinates.note }}</p>
       </details>
       <div class="detail-actions">
         <button class="primary-button" @click="locate"><Crosshair :size="18" />定位到火星球</button

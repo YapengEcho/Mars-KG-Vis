@@ -7,6 +7,7 @@ import SlideCard from '../components/SlideCard.vue'
 import CardRail from '../components/CardRail.vue'
 import { atlas } from '../stores/atlas'
 import { crowdedSlideIds, filterSlides, findSlide, nearestSlide, neighborsOf } from '../lib/catalog'
+import { coordinateStatus } from '../lib/coordinateStatus'
 import { parseSlideGeometry, type Ring } from '../lib/geometry'
 import { apiBase, fetchSlideGeometry } from '../services/api'
 import { formatMarsCoordinate, isMarsCoordinate } from '../lib/marsCoordinates'
@@ -46,9 +47,10 @@ const focusedRecord = computed(
     atlas.state.catalog.records.find((item) => item.id === focusedId.value),
 )
 const crowdedCount = computed(() => crowdedSlideIds(matches.value, overlapDegrees).size)
+const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
 const modeLabel = computed(() =>
   atlas.state.catalog.mode === 'reference'
-    ? '原始坐标 · 待核准'
+    ? coordinates.value.label
     : atlas.state.catalog.mode === 'catalog'
       ? '真实目录'
       : '演示数据',
@@ -67,7 +69,10 @@ const geometryLabel = computed(() => {
     idle: '边界几何：未选点位',
     loading: '边界几何：正在加载…',
     ready: showGeometry.value ? '边界几何：已显示' : '边界几何：已隐藏',
-    blocked: '边界几何：坐标系未确认，暂不叠加',
+    blocked:
+      atlas.state.catalog.mode === 'reference'
+        ? '边界几何：当前参考目录暂不提供叠加'
+        : '边界几何：坐标系未确认，暂不叠加',
     missing: '边界几何：当前记录暂无',
     offline: '边界几何：未连接数据服务',
   }[geometryState.value]
@@ -417,9 +422,7 @@ async function locateCoordinate() {
       <summary>数据说明</summary>
       <p>
         当前展示 {{ atlas.state.catalog.records.length }} 条公开记录。{{
-          atlas.state.catalog.mode === 'reference'
-            ? '球面沿用原始坐标数值，纬度约定待核准；没有做纬度转换，不用于精确定位。'
-            : ''
+          coordinates.note
         }}来源见记录详情。
       </p>
       <p v-if="crowdedCount">相邻点位可能重叠，选中后可依次查看。</p>

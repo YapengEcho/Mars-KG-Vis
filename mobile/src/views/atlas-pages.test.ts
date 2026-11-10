@@ -43,10 +43,11 @@ describe('atlas pages render without the private catalogue', () => {
     expect(html).toContain('SL 滑移型 vs SP 滑塌型')
     expect(html.match(/<table/g)?.length).toBe(2)
   })
-  it('shows the real public record without claiming its coordinates are verified', async () => {
+  it('distinguishes image alignment from the pending source coordinate documentation', async () => {
     const html = await render('/atlas/case/case-ls-0493')
     expect(html).toContain('远程堆积的滑移型')
-    expect(html).toContain('原始坐标 · 待核准')
+    expect(html).toContain('已与 CTX 影像对齐')
+    expect(html).toContain('原始坐标说明待补')
     expect(html).toContain('ls_0493')
   })
   it('rejects an unknown type politely', async () => {

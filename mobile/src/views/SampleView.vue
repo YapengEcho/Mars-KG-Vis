@@ -3,8 +3,11 @@ import { computed } from 'vue'
 import ZoomableImage from '../components/ZoomableImage.vue'
 import { sampleById } from '../lib/samples'
 import { typeInfo } from '../types'
+import { publicCatalog } from '../lib/publicCatalog'
+import { coordinateStatus } from '../lib/coordinateStatus'
 const props = defineProps<{ id: string }>()
 const sample = computed(() => sampleById(props.id))
+const coordinates = coordinateStatus(publicCatalog)
 </script>
 <template>
   <section class="content-view sample-view">
@@ -36,9 +39,7 @@ const sample = computed(() => sampleById(props.id))
         <p class="muted">
           图片来自已有训练裁片；试用结果不作为独立测试成绩。类别沿用原编目，单张影像不能代表这一类的所有形态。
         </p>
-        <p class="muted">
-          当前公开8张影像。球面位置沿用原始坐标，纬度约定尚待核准，未进行坐标转换。
-        </p>
+        <p class="muted">当前公开8张影像。{{ coordinates.note }}</p>
         <a :href="sample.source.url" target="_blank" rel="noopener noreferrer" class="text-button"
           >编目来源：{{ sample.source.title }} ↗</a
         >
