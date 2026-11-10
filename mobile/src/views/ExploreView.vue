@@ -40,7 +40,8 @@ const longitudeInput = ref('')
 const latitudeInput = ref('')
 const coordinateNote = ref('')
 const neighbors = ref<Slide[]>([])
-const neighborIndex = ref(0)
+/** Index of the neighbor currently shown; -1 means the focused record itself. */
+const neighborIndex = ref(-1)
 const geometryRing = ref<Ring | null>(null)
 const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>(
   'idle',
@@ -134,9 +135,19 @@ function applyFocus(record: Slide, note?: string): void {
   focusedId.value = record.id
   focusNote.value = note ?? `已定位 ${record.sourceId ?? record.id} · ${record.name}`
   neighbors.value = neighborsOf(matches.value, record.id, overlapDegrees)
-  neighborIndex.value = 0
+  neighborIndex.value = -1
   globe.value?.focusPoint(record.id)
   revealCard(record.id)
+}
+/**
+ * Filters reset `visibleCount` to the first page, and that watcher runs after
+ * the caller. Wait for it before revealing a record that may sit deeper.
+ */
+async function resetFiltersForFocus(): Promise<void> {
+  if (!query.value && !type.value) return
+  query.value = ''
+  type.value = ''
+  await nextTick()
 }
 async function focusFromRoute() {
   const key = route.query.focus
@@ -148,8 +159,7 @@ async function focusFromRoute() {
       : `未找到编号 ${key}，请确认目录来源`
     return
   }
-  query.value = ''
-  type.value = ''
+  await resetFiltersForFocus()
   applyFocus(record)
 }
 watch(() => route.fullPath, focusFromRoute)
@@ -159,8 +169,10 @@ function select(id: string) {
   focusedId.value = id
   const record = matches.value.find((item) => item.id === id)
   if (record) {
+    focusNote.value = `已定位 ${record.sourceId ?? record.id} · ${record.name}`
     neighbors.value = neighborsOf(matches.value, id, overlapDegrees)
-    neighborIndex.value = 0
+    neighborIndex.value = -1
+    revealCard(id)
   }
   atlas.select(id)
 }
@@ -176,7 +188,7 @@ function cycleNeighbor() {
 function reset() {
   focusedId.value = ''
   neighbors.value = []
-  neighborIndex.value = 0
+  neighborIndex.value = -1
   globe.value?.resetView()
 }
 function loadMore() {
@@ -198,7 +210,7 @@ function toggleType(value: SlideType) {
 function clearCoordinateNote() {
   coordinateNote.value = ''
 }
-function locateCoordinate() {
+async function locateCoordinate() {
   const longitude = Number(longitudeInput.value)
   const latitude = Number(latitudeInput.value)
   if (
@@ -215,15 +227,14 @@ function locateCoordinate() {
   if (!near || near.distanceKm > coordinateMatchKm) {
     focusedId.value = ''
     neighbors.value = []
-    neighborIndex.value = 0
+    neighborIndex.value = -1
     focusNote.value = `已定位坐标 ${formatMarsCoordinate({ longitude, latitude })}`
     coordinateNote.value = near
       ? `坐标 ${coordinateMatchKm} km 内没有目录记录（最近约 ${Math.round(near.distanceKm)} km）。`
       : '当前目录没有可比较的记录。'
     return
   }
-  query.value = ''
-  type.value = ''
+  await resetFiltersForFocus()
   applyFocus(
     near.slide,
     `坐标 ${formatMarsCoordinate({ longitude, latitude })} 最近记录 ${
@@ -356,11 +367,15 @@ function locateCoordinate() {
           class="text-button"
           @click="cycleNeighbor"
         >
-          下一个相邻点位（{{ neighborIndex + 1 }}/{{ neighbors.length }}）
+          下一个相邻点位（{{ neighborIndex + 2 }}/{{ neighbors.length }}）
           <ChevronRight :size="13" />
         </button>
         <span v-else-if="neighbors.length" class="focus-hint-note">
-          附近共 {{ neighbors.length }} 个密集点位
+          {{
+            neighborIndex < 0
+              ? `附近共 ${neighbors.length} 个密集点位`
+              : `已到最后一个相邻点位（共 ${neighbors.length} 个）`
+          }}
         </span>
       </p>
       <p v-if="crowdedCount" class="dense-note">
