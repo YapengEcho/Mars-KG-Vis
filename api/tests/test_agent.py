@@ -158,6 +158,34 @@ def test_search_docs_filters_by_doc_type():
     assert result.ok
     assert result.payload["results"]
     assert all(item["doc_type"] == "distribution" for item in result.payload["results"])
+
+
+def test_search_docs_enum_covers_every_doc_type():
+    """TOOL_SPECS 的 doc_type enum 必须和图鉴 JSON 中实际出现的类型完全一致，
+    否则模型会被 schema 卡死想搜却搜不到。"""
+    from api.agent.tools import TOOL_SPECS
+
+    spec = next(s for s in TOOL_SPECS if s["function"]["name"] == "search_docs")
+    enum_values = spec["function"]["parameters"]["properties"]["doc_type"]["enum"]
+    retriever = guidebook_retriever()
+    actual_types = sorted({doc.doc_type for doc in retriever.docs})
+    # 两边应该完全一致，不允许 schema 里有多余项或数据里有缺失项
+    assert sorted(enum_values) == actual_types, (
+        f"TOOL_SPECS enum {sorted(enum_values)} 与图鉴实际类型 {actual_types} 不一致"
+    )
+    # 再跑一遍，确认每一种类型都能被正确过滤出来
+    for doc_type in enum_values:
+        result = execute_tool(
+            "search_docs",
+            {"q": "", "doc_type": doc_type, "limit": 50},
+            make_catalog(),
+            retriever,
+        )
+        assert result.ok, f"doc_type={doc_type} 过滤执行失败"
+        filtered_types = {item["doc_type"] for item in result.payload["results"]}
+        assert filtered_types <= {doc_type}, (
+            f"doc_type={doc_type} 过滤混入了其他类型: {filtered_types - {doc_type}}"
+        )
 def test_rare_term_outranks_common_term():
     docs = guidebook_retriever().search("体积效应", limit=1)
     assert docs

@@ -109,7 +109,7 @@ function statusText() {
           </button>
         </div>
       </template>
-      <div v-if="busy" class="bubble assistant typing"><LoaderCircle :size="16" class="spin" /></div>
+      <div v-if="busy && thread[thread.length - 1]?.role === 'user'" class="bubble assistant typing"><LoaderCircle :size="16" class="spin" /></div>
     </div>
     <p v-if="error" class="chat-error" role="alert">{{ error }}</p>
     <form class="chat-input" @submit.prevent="send">

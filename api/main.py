@@ -1,11 +1,13 @@
 """Read-only catalog service for the mobile client."""
 
 from contextlib import asynccontextmanager
+import json
 import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from api.sqlite_store import load_sqlite_catalog
 from api.catalog_query import Bounds, filter_records, parse_bbox
 from api.content_routes import router as content_router
@@ -14,7 +16,7 @@ from api.agent import llm
 from api.agent.records import TraceRecorder
 from api.agent.retrieval import KeywordRetriever, load_docs
 from api.agent.schemas import ChatRequest, ChatResponse
-from api.agent.service import run_agent
+from api.agent.service import iter_agent_events, run_agent
 from api.schemas import (
     AgentCapability,
     Capabilities,
@@ -190,6 +192,29 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
             get_catalog(request),
             request.app.state.retriever,
             request.app.state.tracer,
+        )
+
+    @application.post("/api/agent/chat/stream")
+    def agent_chat_stream(payload: ChatRequest, request: Request):
+        """Server-sent events variant of /api/agent/chat.
+
+        Emits one ``data:`` frame per agent event (delta / status / done /
+        error) so clients can render the answer incrementally.
+        """
+
+        def event_source():
+            for event in iter_agent_events(
+                payload,
+                get_catalog(request),
+                request.app.state.retriever,
+                request.app.state.tracer,
+            ):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            event_source(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     @application.post("/api/landslide/classify", status_code=503)

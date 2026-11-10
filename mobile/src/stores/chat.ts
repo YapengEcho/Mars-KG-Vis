@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { buildChatHistory } from '../lib/chatHistory'
-import { sendChatMessage } from '../services/api'
+import { streamChatMessage } from '../services/api'
 import type { AgentAction, ChatResponse } from '../services/api'
 
 export const WELCOME_MESSAGE =
@@ -13,6 +13,12 @@ export interface ChatEntry {
   citations?: ChatResponse['citations']
   actions?: AgentAction[]
   status?: ChatResponse['status']
+  /**
+   * Assistant replies stay pending until a terminal `done`/`error` frame
+   * arrives. Pending content is shown to the user but excluded from the history
+   * sent to the model, so a cut-off answer is never replayed as complete.
+   */
+  pending?: boolean
 }
 
 /**
@@ -38,16 +44,36 @@ export const chat = {
     state.error = ''
     state.thread.push({ role: 'user', content: question })
     state.busy = true
+    // The assistant bubble is created lazily on the first streamed chunk and
+    // grows as deltas arrive; onDone swaps in the authoritative final payload
+    // and clears `pending`. If the stream dies early the bubble stays pending
+    // and is skipped when building the next request's history.
+    let entryIndex = -1
+    let finished = false
+    const ensureEntry = (): ChatEntry => {
+      if (entryIndex < 0) {
+        state.thread.push({ role: 'assistant', content: '', pending: true })
+        entryIndex = state.thread.length - 1
+      }
+      return state.thread[entryIndex]
+    }
     try {
-      const response = await sendChatMessage(buildChatHistory(state.thread))
-      state.thread.push({
-        role: 'assistant',
-        content: response.answer,
-        records: response.records,
-        citations: response.citations,
-        actions: response.actions,
-        status: response.status,
+      await streamChatMessage(buildChatHistory(state.thread), {
+        onDelta: (chunk) => {
+          ensureEntry().content += chunk
+        },
+        onDone: (response) => {
+          finished = true
+          const entry = ensureEntry()
+          entry.content = response.answer
+          entry.records = response.records
+          entry.citations = response.citations
+          entry.actions = response.actions
+          entry.status = response.status
+          entry.pending = false
+        },
       })
+      if (!finished) state.error = '回复未完成，请重试'
     } catch (e) {
       state.error = e instanceof Error ? e.message : '发送失败，请稍后重试'
     } finally {
