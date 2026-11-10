@@ -18,6 +18,8 @@ export const HISTORY_WINDOW = 20
 export interface ThreadMessage {
   role: 'user' | 'assistant'
   content: string
+  /** True while an assistant reply is still streaming, or after it was cut off. */
+  pending?: boolean
 }
 
 /**
@@ -26,6 +28,9 @@ export interface ThreadMessage {
  * Sending the full transcript eventually exceeds the backend limit and makes
  * every later request fail with 422. Keep only the most recent window, and drop
  * leading assistant messages so the history always starts with a user turn.
+ *
+ * Interrupted replies are excluded: a half-streamed bubble may end mid-sentence
+ * and must not be replayed to the model as if it were a completed answer.
  */
 export function buildChatHistory(
   thread: ReadonlyArray<ThreadMessage>,
@@ -33,6 +38,7 @@ export function buildChatHistory(
 ): HistoryMessage[] {
   const usable: HistoryMessage[] = thread
     .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .filter((message) => !message.pending)
     .filter((message) => message.content.trim().length > 0)
     .map((message) => ({ role: message.role, content: message.content }))
 

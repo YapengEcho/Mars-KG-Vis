@@ -51,4 +51,16 @@ describe('buildChatHistory', () => {
       { role: 'user', content: '问题2' },
     ])
   })
+
+  it('drops assistant replies that never finished streaming', () => {
+    const history = buildChatHistory([
+      { role: 'user', content: '问题1' },
+      { role: 'assistant', content: 'SP 总数是三', pending: true },
+      { role: 'user', content: '问题2' },
+    ])
+    expect(history).toEqual([
+      { role: 'user', content: '问题1' },
+      { role: 'user', content: '问题2' },
+    ])
+  })
 })

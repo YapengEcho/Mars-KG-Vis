@@ -13,6 +13,12 @@ export interface ChatEntry {
   citations?: ChatResponse['citations']
   actions?: AgentAction[]
   status?: ChatResponse['status']
+  /**
+   * Assistant replies stay pending until a terminal `done`/`error` frame
+   * arrives. Pending content is shown to the user but excluded from the history
+   * sent to the model, so a cut-off answer is never replayed as complete.
+   */
+  pending?: boolean
 }
 
 /**
@@ -39,12 +45,14 @@ export const chat = {
     state.thread.push({ role: 'user', content: question })
     state.busy = true
     // The assistant bubble is created lazily on the first streamed chunk and
-    // grows as deltas arrive; onDone swaps in the authoritative final payload.
+    // grows as deltas arrive; onDone swaps in the authoritative final payload
+    // and clears `pending`. If the stream dies early the bubble stays pending
+    // and is skipped when building the next request's history.
     let entryIndex = -1
     let finished = false
     const ensureEntry = (): ChatEntry => {
       if (entryIndex < 0) {
-        state.thread.push({ role: 'assistant', content: '' })
+        state.thread.push({ role: 'assistant', content: '', pending: true })
         entryIndex = state.thread.length - 1
       }
       return state.thread[entryIndex]
@@ -62,6 +70,7 @@ export const chat = {
           entry.citations = response.citations
           entry.actions = response.actions
           entry.status = response.status
+          entry.pending = false
         },
       })
       if (!finished) state.error = '回复未完成，请重试'
