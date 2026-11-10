@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { ArrowRight, ArrowUpRight, Search } from '@lucide/vue'
 import SlideCard from '../components/SlideCard.vue'
+import SampleGallery from '../components/SampleGallery.vue'
 import { atlas, byType } from '../stores/atlas'
 import { atlasContent, casesOfType } from '../lib/atlas'
 import { findSlide, filterSlides } from '../lib/catalog'
@@ -47,6 +48,7 @@ function openRecord(landslideId: string) {
     <p class="type-note">
       {{ type ? typeInfo[type].note : '类别沿用目录标签；点位详情中显示对应来源。' }}
     </p>
+    <SampleGallery id="samples" />
 
     <div class="atlas-entry">
       <div>
@@ -60,7 +62,9 @@ function openRecord(landslideId: string) {
     </div>
 
     <div class="section-heading">
-      <h2>12 个案例 <span>{{ cases.length }}</span></h2>
+      <h2>
+        12 个案例 <span>{{ cases.length }}</span>
+      </h2>
       <RouterLink to="/atlas/compare">判读限制</RouterLink>
     </div>
     <div class="case-grid">

@@ -21,6 +21,9 @@ onMounted(() => atlas.load())
           >MARS<span class="brand-light"> ATLAS</span><small>火星滑坡探索</small></span
         ></RouterLink
       >
+      <RouterLink class="header-recognize" to="/recognize"
+        ><ScanLine :size="17" />试试识别</RouterLink
+      >
     </header>
     <div v-if="atlas.state.error || atlas.state.storageError" class="notice" role="status">
       <span>{{ atlas.state.error || atlas.state.storageError }}</span>

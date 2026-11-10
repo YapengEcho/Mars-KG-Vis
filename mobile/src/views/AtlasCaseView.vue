@@ -5,10 +5,13 @@ import { useRouter } from 'vue-router'
 import { atlas } from '../stores/atlas'
 import { atlasContent, caseById, caseRecord, casesOfType, typeEntry } from '../lib/atlas'
 import { coordinateLabel, typeInfo } from '../types'
+import { sampleById } from '../lib/samples'
+import ZoomableImage from '../components/ZoomableImage.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
 const item = computed(() => caseById(props.id))
+const sample = computed(() => (item.value ? sampleById(item.value.landslideId) : undefined))
 const entry = computed(() => (item.value ? typeEntry(item.value.type) : undefined))
 const record = computed(() =>
   item.value ? caseRecord(item.value, atlas.state.catalog.records) : undefined,
@@ -29,7 +32,9 @@ function locate() {
 <template>
   <section class="content-view">
     <RouterLink :to="item ? `/atlas/type/${item.type}` : '/atlas'" class="text-button back-link"
-      ><ArrowLeft :size="16" />{{ item ? `返回${typeInfo[item.type].name}图鉴` : '返回图鉴' }}</RouterLink
+      ><ArrowLeft :size="16" />{{
+        item ? `返回${typeInfo[item.type].name}图鉴` : '返回图鉴'
+      }}</RouterLink
     >
     <p v-if="!item" class="notice">没有这个案例：{{ props.id }}</p>
     <template v-else-if="entry">
@@ -49,6 +54,12 @@ function locate() {
       </div>
 
       <div class="section-heading"><h2>观察要点</h2></div>
+      <div v-if="sample" class="sample-media">
+        <ZoomableImage :src="sample.imageUrl" :alt="item.title" />
+      </div>
+      <RouterLink v-if="sample" class="text-button" :to="`/samples/${sample.id}`"
+        >查看公开示例与试分类 →</RouterLink
+      >
       <ol class="atlas-points case-points">
         <li v-for="point in item.observations" :key="point">{{ point }}</li>
       </ol>
@@ -65,7 +76,9 @@ function locate() {
         </div>
         <div>
           <dt>面积</dt>
-          <dd>{{ record.areaKm2 === null ? '暂无可靠记录' : `${record.areaKm2.toFixed(2)} km²` }}</dd>
+          <dd>
+            {{ record.areaKm2 === null ? '暂无可靠记录' : `${record.areaKm2.toFixed(2)} km²` }}
+          </dd>
         </div>
         <div>
           <dt>资料来源</dt>
@@ -95,7 +108,10 @@ function locate() {
           :aria-pressed="record ? atlas.isSaved(record.id) : false"
           @click="record && atlas.toggleSaved(record.id)"
         >
-          <Bookmark :size="17" :fill="record && atlas.isSaved(record.id) ? 'currentColor' : 'none'" />
+          <Bookmark
+            :size="17"
+            :fill="record && atlas.isSaved(record.id) ? 'currentColor' : 'none'"
+          />
           {{ record && atlas.isSaved(record.id) ? '已收藏' : '收藏这一条' }}
         </button>
         <RouterLink class="text-button" :to="`/atlas/type/${item.type}`">同类案例</RouterLink>

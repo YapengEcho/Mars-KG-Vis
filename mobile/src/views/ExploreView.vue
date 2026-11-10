@@ -14,6 +14,7 @@ import {
 import { useRoute } from 'vue-router'
 import MarsGlobe from '../components/MarsGlobe.vue'
 import SlideCard from '../components/SlideCard.vue'
+import SampleGallery from '../components/SampleGallery.vue'
 import { atlas } from '../stores/atlas'
 import { crowdedSlideIds, filterSlides, findSlide, nearestSlide, neighborsOf } from '../lib/catalog'
 import { parseSlideGeometry, type Ring } from '../lib/geometry'
@@ -36,6 +37,7 @@ const visibleCount = ref(pageSize)
 const basemap = ref<'loading' | 'ready' | 'fallback'>('loading')
 const showGeometry = ref(true)
 const coordinateOpen = ref(false)
+const searchOpen = ref(false)
 const longitudeInput = ref('')
 const latitudeInput = ref('')
 const coordinateNote = ref('')
@@ -43,9 +45,7 @@ const neighbors = ref<Slide[]>([])
 /** Index of the neighbor currently shown; -1 means the focused record itself. */
 const neighborIndex = ref(-1)
 const geometryRing = ref<Ring | null>(null)
-const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>(
-  'idle',
-)
+const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>('idle')
 let geometryRequest = 0
 const matches = computed(() => filterSlides(atlas.state.catalog.records, query.value, type.value))
 const visible = computed(() => matches.value.slice(0, visibleCount.value))
@@ -247,41 +247,51 @@ async function locateCoordinate() {
   <section class="explore-view">
     <div class="explore-heading">
       <div>
-        <span class="eyebrow">MARS LANDSLIDES</span>
+        <span class="eyebrow">一颗星球，不同的地表故事</span>
         <h1>探索火星滑坡</h1>
-        <p>浏览滑坡分布、类型与案例。</p>
+        <p>转动火星，或从一张真实滑坡影像开始。</p>
       </div>
-      <span class="data-badge" :class="atlas.state.catalog.mode" aria-live="polite">{{
-        atlas.state.loading ? '目录加载中…' : modeLabel
-      }}</span>
-    </div>
-    <div class="search-box">
-      <Search :size="19" /><input
-        v-model="query"
-        aria-label="搜索滑坡编号、名称或说明"
-        placeholder="搜索编号、名称或说明"
-        inputmode="search"
-        @input="focusNote = ''"
-      /><button v-if="query" class="icon-button" aria-label="清除搜索" @click="clearQuery">
-        <X :size="16" />
-      </button>
-    </div>
-    <div class="type-filters" role="group" aria-label="类型筛选">
-      <button :class="{ active: !type }" :aria-pressed="!type" @click="clearFilters()">全部</button
-      ><button
-        v-for="t in slideTypes"
-        :key="t"
-        :class="{ active: type === t }"
-        :aria-pressed="type === t"
-        @click="toggleType(t)"
+      <button
+        class="icon-button search-toggle"
+        aria-label="搜索与筛选点位"
+        :aria-expanded="searchOpen"
+        @click="searchOpen = !searchOpen"
       >
-        <i :style="{ background: typeInfo[t].color }"></i>{{ typeInfo[t].name }}
+        <Search :size="20" />
       </button>
+    </div>
+    <div v-show="searchOpen || query || type" class="explore-search">
+      <div class="search-box">
+        <Search :size="19" /><input
+          v-model="query"
+          aria-label="搜索滑坡编号、名称或说明"
+          placeholder="搜索编号、名称或说明"
+          inputmode="search"
+          @input="focusNote = ''"
+        /><button v-if="query" class="icon-button" aria-label="清除搜索" @click="clearQuery">
+          <X :size="16" />
+        </button>
+      </div>
+      <div class="type-filters" role="group" aria-label="类型筛选">
+        <button :class="{ active: !type }" :aria-pressed="!type" @click="clearFilters()">
+          全部</button
+        ><button
+          v-for="t in slideTypes"
+          :key="t"
+          :class="{ active: type === t }"
+          :aria-pressed="type === t"
+          @click="toggleType(t)"
+        >
+          <i :style="{ background: typeInfo[t].color }"></i>{{ typeInfo[t].name }}
+        </button>
+      </div>
     </div>
     <div class="globe-stage">
       <div class="globe-topline">
-        <span><i></i>MARS · {{ type || 'ALL TYPES' }}</span
-        ><span>{{ matches.length }} 个点位</span>
+        <span><i></i>火星 · {{ type || '全球视野' }}</span
+        ><span>{{
+          atlas.state.catalog.mode === 'demo' ? '演示点位 · 非真实位置' : modeLabel
+        }}</span>
       </div>
       <MarsGlobe
         ref="globe"
@@ -317,7 +327,11 @@ async function locateCoordinate() {
           <LocateFixed :size="19" />
         </button>
       </div>
-      <p v-if="focusedRecord" class="globe-geometry-status" aria-live="polite">
+      <p
+        v-if="focusedRecord && geometryState === 'ready'"
+        class="globe-geometry-status"
+        aria-live="polite"
+      >
         {{ geometryLabel }}
       </p>
       <form v-if="coordinateOpen" class="coordinate-panel" @submit.prevent="locateCoordinate">
@@ -350,6 +364,7 @@ async function locateCoordinate() {
         <span>拖动旋转 · 双指缩放 · 点选查看</span><span>{{ basemapNote }}</span>
       </div>
     </div>
+    <SampleGallery compact />
     <section class="discovery-section">
       <div class="section-heading">
         <div>
@@ -379,7 +394,8 @@ async function locateCoordinate() {
         </span>
       </p>
       <p v-if="crowdedCount" class="dense-note">
-        其中 {{ crowdedCount }} 个点位彼此相距不足 {{ overlapDegrees }}°，可能重叠显示；点选后可逐个查看相邻点位。
+        其中 {{ crowdedCount }} 个点位彼此相距不足
+        {{ overlapDegrees }}°，可能重叠显示；点选后可逐个查看相邻点位。
       </p>
       <p v-if="atlas.state.loading" class="list-status">正在加载目录，完成后刷新列表与点位…</p>
       <div v-if="matches.length" class="discovery-cards">

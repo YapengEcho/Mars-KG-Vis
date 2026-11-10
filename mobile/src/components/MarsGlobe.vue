@@ -387,7 +387,7 @@ function zoomOut(): void {
 function resetView(): void {
   if (!camera) return
   focusAnimation = undefined
-  camera.position.set(0, 0.65, 5.65)
+  camera.position.set(0, 0.65, 6.7)
   controls?.target.set(0, 0, 0)
   controls?.update()
 }
@@ -512,7 +512,7 @@ onMounted(() => {
     host.value.prepend(renderer.domElement)
     scene = new THREE.Scene()
     camera = new THREE.PerspectiveCamera(43, 1, 0.1, 50)
-    camera.position.set(0, 0.65, 5.65)
+    camera.position.set(0, 0.65, 6.7)
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enablePan = false
     controls.enableDamping = true
