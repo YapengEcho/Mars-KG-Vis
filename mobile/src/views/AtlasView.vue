@@ -14,25 +14,26 @@ const matches = computed(() => filterSlides(atlas.state.catalog.records, query.v
 <template>
   <section class="content-view atlas-view">
     <div class="page-heading"><h1>滑坡图鉴</h1></div>
-    <div class="type-grid">
-      <RouterLink
-        v-for="t in slideTypes"
-        :key="t"
-        :to="`/atlas/type/${t}`"
-        class="type-tile visual-type"
-        :style="{ '--type-color': typeInfo[t].color }"
-      >
-        <img :src="samples.find((s) => s.type === t)?.imageUrl" :alt="typeInfo[t].name" />
-        <div>
-          <span class="type-code">{{ t }}</span>
-          <h2>{{ typeInfo[t].name }}</h2>
-          <ArrowRight :size="16" />
-        </div>
-      </RouterLink>
+    <div class="atlas-index">
+      <div class="type-grid">
+        <RouterLink
+          v-for="t in slideTypes"
+          :key="t"
+          :to="`/atlas/type/${t}`"
+          class="type-tile visual-type"
+          :style="{ '--type-color': typeInfo[t].color }"
+        >
+          <img :src="samples.find((s) => s.type === t)?.imageUrl" :alt="typeInfo[t].name" />
+          <div>
+            <h2>{{ typeInfo[t].name }}</h2>
+            <span class="type-code">{{ t }}</span>
+          </div>
+        </RouterLink>
+      </div>
+      <RouterLink class="compact-compare" to="/atlas/compare"
+        >易混类型对比 <ArrowRight :size="16"
+      /></RouterLink>
     </div>
-    <RouterLink class="compact-compare" to="/atlas/compare"
-      >易混类型对比 <ArrowRight :size="16"
-    /></RouterLink>
     <section id="samples" class="atlas-catalog">
       <div class="section-heading">
         <h2>
@@ -60,7 +61,7 @@ const matches = computed(() => filterSlides(atlas.state.catalog.records, query.v
       </div>
     </section>
     <details class="quiet-details case-reading">
-      <summary>延伸阅读 · {{ atlasContent.cases.length }} 个案例</summary>
+      <summary>延伸阅读（{{ atlasContent.cases.length }} 个案例）</summary>
       <div class="case-reading-list">
         <RouterLink v-for="item in atlasContent.cases" :key="item.id" :to="`/atlas/case/${item.id}`"
           ><span>{{ item.title }}</span

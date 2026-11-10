@@ -1,16 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import {
-  ArrowRight,
-  ChevronRight,
-  LocateFixed,
-  MapPin,
-  Minus,
-  Plus,
-  Search,
-  Shapes,
-  X,
-} from '@lucide/vue'
+import { ChevronRight, LocateFixed, MapPin, Minus, Plus, Search, Shapes, X } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import MarsGlobe from '../components/MarsGlobe.vue'
 import SlideCard from '../components/SlideCard.vue'
@@ -290,13 +280,13 @@ async function locateCoordinate() {
           :aria-pressed="type === t"
           @click="toggleType(t)"
         >
-          <i :style="{ background: typeInfo[t].color }"></i>{{ typeInfo[t].name }}
+          {{ typeInfo[t].name }}
         </button>
       </div>
     </div>
     <div class="globe-stage">
       <div class="globe-topline">
-        <span><i></i>火星 · {{ type || '全球视野' }}</span
+        <span>{{ type ? typeInfo[type].name : '全球视野' }}</span
         ><span>{{ modeLabel }}</span>
       </div>
       <MarsGlobe
@@ -378,7 +368,7 @@ async function locateCoordinate() {
             {{ query || type ? '查询结果' : '滑坡目录' }} <span>{{ matches.length }}</span>
           </h2>
         </div>
-        <RouterLink to="/atlas#samples">查看全部 <ArrowRight :size="16" /></RouterLink>
+        <RouterLink to="/atlas#samples">查看全部</RouterLink>
       </div>
       <p v-if="focusNote" class="focus-hint" role="status">
         <LocateFixed :size="14" /><span>{{ focusNote }}</span

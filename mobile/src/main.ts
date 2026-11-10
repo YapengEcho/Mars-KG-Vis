@@ -2,6 +2,8 @@ import { createApp } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import ExploreView from './views/ExploreView.vue'
+import './tokens.css'
+import './base.css'
 import './styles.css'
 import './experience.css'
 

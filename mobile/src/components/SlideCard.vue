@@ -30,8 +30,8 @@ defineProps<{ slide: Slide; compact?: boolean; highlighted?: boolean }>()
       <div class="slide-card-copy">
         <h3>{{ slide.name }}</h3>
         <p>
-          <i :style="{ background: typeInfo[slide.type].color }"></i>{{ slide.type }} ·
-          {{ typeInfo[slide.type].name }}
+          <span class="record-type">{{ slide.type }}</span
+          ><span>{{ typeInfo[slide.type].name }}</span>
         </p>
       </div>
       <ArrowUpRight :size="18" class="muted" />

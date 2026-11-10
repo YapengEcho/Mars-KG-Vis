@@ -124,9 +124,8 @@ onBeforeUnmount(() => {
       <h1>识别滑坡类型</h1>
       <p>上传单个滑坡的裁片</p>
     </div>
-    <div class="service-status">
-      <span :class="{ ready: available }"></span>{{ serviceText
-      }}<button v-if="!available" class="text-button" @click="connect">重试</button>
+    <div class="service-status" role="status">
+      {{ serviceText }}<button v-if="!available" class="text-button" @click="connect">重试</button>
     </div>
     <template v-if="taskId">
       <RecognitionResult :key="taskId" :task-id="taskId" />
@@ -136,51 +135,57 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <template v-else>
-      <label class="upload-area" :class="{ 'has-image': preview }">
-        <img v-if="preview" :src="preview" alt="待识别图片预览" /><template v-else
-          ><ImagePlus :size="34" :stroke-width="1.4" /><strong>{{
-            choosing ? '正在加载影像…' : '选择滑坡影像'
-          }}</strong
-          ><span>PNG / JPEG · 最大 8 MB</span></template
-        >
-        <input
-          type="file"
-          accept="image/png,image/jpeg"
-          aria-label="选择待识别图片"
-          :disabled="busy"
-          @change="pick"
-        />
-      </label>
-      <div v-if="file" class="file-row">
-        <span>{{ file.name }}</span
-        ><button class="icon-button" aria-label="移除图片" :disabled="busy" @click="clear">
-          <X :size="18" />
-        </button>
-      </div>
-      <p v-if="isSample" class="sample-caption">编目影像 · 使用已有目标框</p>
-      <button
-        class="primary-button full-width"
-        :disabled="!available || !file || busy || choosing"
-        @click="submit"
-      >
-        <ScanLine :size="18" />{{ busy ? '正在提交…' : '开始分类' }}
-      </button>
-      <p v-if="message" role="alert" class="notice">{{ message }}</p>
-      <div class="section-heading sample-picker-heading">
-        <h2>从目录选择</h2>
-        <RouterLink to="/atlas#samples">全部影像 →</RouterLink>
-      </div>
-      <div class="sample-picker">
-        <button
-          v-for="sample in samples.filter((_, i) => i % 2 === 0)"
-          :key="sample.id"
-          :disabled="busy"
-          @click="useSample(sample.id)"
-        >
-          <img :src="sample.imageUrl" :alt="`选择滑坡 ${sample.sourceId}影像`" /><span
-            >{{ sample.type }} · {{ sample.sourceId }}</span
+      <div class="recognition-workspace">
+        <div class="upload-column">
+          <label class="upload-area" :class="{ 'has-image': preview }">
+            <img v-if="preview" :src="preview" alt="待识别图片预览" /><template v-else
+              ><ImagePlus :size="34" :stroke-width="1.4" /><strong>{{
+                choosing ? '正在加载影像…' : '选择滑坡影像'
+              }}</strong
+              ><span>PNG / JPEG，最大 8 MB</span></template
+            >
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              aria-label="选择待识别图片"
+              :disabled="busy"
+              @change="pick"
+            />
+          </label>
+          <div v-if="file" class="file-row">
+            <span>{{ file.name }}</span
+            ><button class="icon-button" aria-label="移除图片" :disabled="busy" @click="clear">
+              <X :size="18" />
+            </button>
+          </div>
+          <p v-if="isSample" class="sample-caption">编目影像 · 使用已有目标框</p>
+          <button
+            class="primary-button full-width"
+            :disabled="!available || !file || busy || choosing"
+            @click="submit"
           >
-        </button>
+            <ScanLine :size="18" />{{ busy ? '正在提交…' : '开始分类' }}
+          </button>
+          <p v-if="message" role="alert" class="notice">{{ message }}</p>
+        </div>
+        <div class="sample-column">
+          <div class="section-heading sample-picker-heading">
+            <h2>从目录选择</h2>
+            <RouterLink to="/atlas#samples">全部影像</RouterLink>
+          </div>
+          <div class="sample-picker">
+            <button
+              v-for="sample in samples.filter((_, i) => i % 2 === 0)"
+              :key="sample.id"
+              :disabled="busy"
+              @click="useSample(sample.id)"
+            >
+              <img :src="sample.imageUrl" :alt="`选择滑坡 ${sample.sourceId}影像`" /><span
+                >{{ sample.type }} {{ sample.sourceId }}</span
+              >
+            </button>
+          </div>
+        </div>
       </div>
       <p class="result-note">开始分类后上传图片，结果需复核。</p>
       <details class="quiet-details">
