@@ -2,7 +2,7 @@
 
 火星滑坡探索移动端，支持火星球浏览、目录查询、类型图鉴与点位收藏。
 
-仓库另保留滑坡检测与四分类的[模型研究代码及结果说明](docs/research/README.md)，包括人工修框、数据导出、训练对照与联合评估。研究权重尚未接入移动端 API。
+仓库另保留滑坡检测与四分类的[模型研究代码及结果说明](docs/research/README.md)，包括人工修框、数据导出、训练对照与联合评估。API 已提供可配置的真实四分类与识别记录，权重单独交接；APP 的异步任务与历史记录交互仍需联调。
 
 ## 当前功能
 
@@ -13,7 +13,7 @@
 - 本机收藏与回访。
 - 单图分类上传页面及服务状态检查。
 
-默认附带20条虚构示例记录，未配置真实目录时球面使用程序生成的示意纹理。分类模型、大图检测和资料问答尚未接入，不返回模拟预测。
+默认附带20条虚构示例记录，未配置真实目录时球面使用程序生成的示意纹理。分类和资料问答需配置相应服务资源；大图检测尚未接入，不返回模拟预测。
 
 ## 技术栈
 
@@ -54,7 +54,7 @@ API支持JSON和SQLite。建立演示数据库：
 python scripts/import_catalog_sqlite.py --input examples/catalog.demo.json --output output/catalog_demo.sqlite3
 ```
 
-设置`MARS_DB_PATH`为数据库绝对路径后启动API。原始真实目录导入后保持staging，坐标核准前不会作为正式目录发布。结构及约定见[数据库说明](contracts/database.md)和[识别接口约定](contracts/recognition.md)。识别HTTP入口目前仍返回503。
+设置`MARS_DB_PATH`为数据库绝对路径后启动API。原始真实目录导入后保持staging，坐标核准前不会作为正式目录发布。结构及约定见[数据库说明](contracts/database.md)和[识别接口约定](contracts/recognition.md)。真实四分类的启动配置见[API说明](api/README.md)，本周交付见[第4周说明](docs/week4/README.md)。
 
 ## 智能助手（Agent）
 
