@@ -112,15 +112,18 @@ onMounted(async () => {
       <p>{{ apiBase ? '本次会话还没有识别记录。' : '尚未连接识别记录服务。' }}</p>
       <RouterLink to="/recognize" class="text-button">选择图片试分类 →</RouterLink>
     </div>
-    <p class="history-note">
-      识别图片与结果保存在服务端，由当前会话凭据访问。网页关闭标签页后会清除凭据，请保留此页以便继续查看。
-    </p>
+    <details class="quiet-details">
+      <summary>记录保存说明</summary>
+      <p class="history-note">
+        识别图片与结果保存在服务端，由当前会话凭据访问。网页关闭标签页后会清除凭据，请保留此页以便继续查看。
+      </p>
+    </details>
 
     <div class="section-heading mine-section">
       <h2>
         我的收藏 <span>{{ atlas.saved.value.length }}</span>
       </h2>
-      <span class="save-note">仅保存在本机 · 最近收藏在前</span>
+      <span class="save-note">本机收藏</span>
     </div>
     <p v-if="atlas.missingSaved.value.length" class="storage-warning" role="status">
       另有 {{ atlas.missingSaved.value.length }} 条收藏不在当前目录中（可能来自其他目录或已删除）。
@@ -145,7 +148,7 @@ onMounted(async () => {
     </div>
     <div class="info-card">
       <Info :size="18" />
-      <p>收藏保存在本机；识别时图片会上传到已配置的服务。公开影像示例共 8 张，模型结果均需复核。</p>
+      <p>当前开放8条真实滑坡记录。</p>
     </div>
   </section>
 </template>

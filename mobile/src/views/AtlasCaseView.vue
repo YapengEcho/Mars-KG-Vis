@@ -58,7 +58,7 @@ function locate() {
         <ZoomableImage :src="sample.imageUrl" :alt="item.title" />
       </div>
       <RouterLink v-if="sample" class="text-button" :to="`/samples/${sample.id}`"
-        >查看公开示例与试分类 →</RouterLink
+        >查看影像 →</RouterLink
       >
       <ol class="atlas-points case-points">
         <li v-for="point in item.observations" :key="point">{{ point }}</li>
@@ -71,7 +71,9 @@ function locate() {
           <dd>{{ record.id }} · 原始编号 {{ record.sourceId ?? '—' }}</dd>
         </div>
         <div>
-          <dt>火星经纬度</dt>
+          <dt>
+            {{ atlas.state.catalog.mode === 'reference' ? '原始坐标 · 待核准' : '火星经纬度' }}
+          </dt>
           <dd>{{ coordinateLabel(record.longitude, record.latitude) }}</dd>
         </div>
         <div>
@@ -93,10 +95,7 @@ function locate() {
           </dd>
         </div>
       </dl>
-      <p v-else class="notice">
-        当前目录里没有 {{ item.landslideId }}（示例目录与公开子集只含部分记录），
-        因此这一页只显示图鉴文案；接入完整目录后会自动显示坐标、面积与来源。
-      </p>
+      <p v-else class="notice">{{ item.landslideId }} 尚未包含在公开目录中。</p>
 
       <div class="case-actions">
         <button class="primary-button" :disabled="!record" @click="locate">

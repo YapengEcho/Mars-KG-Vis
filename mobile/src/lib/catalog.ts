@@ -8,14 +8,15 @@ export function parseCatalog(value: unknown): Catalog {
   if (
     !Array.isArray(c.records) ||
     !c.records.length ||
-    !['demo', 'catalog'].includes(c.mode ?? '') ||
+    !['demo', 'catalog', 'reference'].includes(c.mode ?? '') ||
     typeof c.version !== 'string'
   )
     throw new Error('目录缺少版本、数据模式或记录')
   if (
     c.coordinateSystem?.body !== 'Mars' ||
     c.coordinateSystem.longitude !== 'east-positive, -180..180' ||
-    c.coordinateSystem.latitude !== 'planetocentric, degrees'
+    c.coordinateSystem.latitude !==
+      (c.mode === 'reference' ? 'unverified, degrees' : 'planetocentric, degrees')
   )
     throw new Error('目录必须使用约定的火星坐标')
   const ids = new Set<string>()
@@ -82,9 +83,7 @@ export function filterSlides(records: Slide[], query: string, type: SlideType | 
 export function findSlide(records: Slide[], key: string): Slide | undefined {
   const term = key.trim().toLocaleLowerCase()
   if (!term) return undefined
-  return records.find(
-    (r) => r.id.toLocaleLowerCase() === term || String(r.sourceId ?? '') === term,
-  )
+  return records.find((r) => r.id.toLocaleLowerCase() === term || String(r.sourceId ?? '') === term)
 }
 
 /** Nearest catalog record to a coordinate, with its great-circle distance in km. */

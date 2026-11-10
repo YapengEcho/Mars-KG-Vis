@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import ZoomableImage from './ZoomableImage.vue'
 import { atlas } from '../stores/atlas'
 import { coordinateLabel, typeInfo } from '../types'
+import { sampleById } from '../lib/samples'
 const router = useRouter()
 const slide = atlas.selected
 const dialog = ref<HTMLDialogElement>()
@@ -48,7 +49,7 @@ async function locate() {
     <section v-if="slide" class="detail-sheet">
       <div class="sheet-handle"></div>
       <header class="detail-top">
-        <span class="eyebrow">LANDSLIDE / {{ slide.id }}</span
+        <span>滑坡记录</span
         ><button class="icon-button" aria-label="关闭详情" @click="atlas.dismiss()">
           <X :size="21" />
         </button>
@@ -70,33 +71,57 @@ async function locate() {
         >{{ slide.type }} / {{ typeInfo[slide.type].name }}</span
       >
       <h2 id="detail-title">{{ slide.name }}</h2>
-      <p class="detail-description">{{ slide.summary }}</p>
-      <dl class="detail-grid">
-        <div>
-          <dt>火星经纬度</dt>
-          <dd>{{ coordinateLabel(slide.longitude, slide.latitude) }}</dd>
-        </div>
-        <div>
-          <dt>面积</dt>
-          <dd>{{ slide.areaKm2 === null ? '暂无可靠记录' : `${slide.areaKm2.toFixed(2)} km²` }}</dd>
-        </div>
-        <div>
-          <dt>原始编号</dt>
-          <dd>{{ slide.sourceId ?? '示例记录' }}</dd>
-        </div>
-        <div>
-          <dt>资料来源</dt>
-          <dd>
-            <a
-              v-if="slide.source.url?.startsWith('https://')"
-              :href="slide.source.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              >{{ slide.source.title }} <ExternalLink :size="12" /></a
-            ><span v-else>{{ slide.source.title }}</span>
-          </dd>
-        </div>
-      </dl>
+      <p v-if="slide.summary" class="detail-description">{{ slide.summary }}</p>
+      <div class="detail-shortcuts">
+        <RouterLink
+          v-if="sampleById(slide.id)"
+          :to="`/recognize?sample=${slide.id}`"
+          class="primary-button"
+          @click="atlas.dismiss()"
+          >识别这张影像</RouterLink
+        ><RouterLink
+          :to="`/atlas/type/${slide.type}`"
+          class="secondary-button"
+          @click="atlas.dismiss()"
+          >查看类型</RouterLink
+        >
+      </div>
+      <details class="quiet-details">
+        <summary>位置与来源</summary>
+        <dl class="detail-grid">
+          <div>
+            <dt>
+              {{ atlas.state.catalog.mode === 'reference' ? '原始坐标 · 待核准' : '火星经纬度' }}
+            </dt>
+            <dd>{{ coordinateLabel(slide.longitude, slide.latitude) }}</dd>
+          </div>
+          <div>
+            <dt>面积</dt>
+            <dd>
+              {{ slide.areaKm2 === null ? '暂无可靠记录' : `${slide.areaKm2.toFixed(2)} km²` }}
+            </dd>
+          </div>
+          <div>
+            <dt>原始编号</dt>
+            <dd>{{ slide.sourceId ?? '示例记录' }}</dd>
+          </div>
+          <div>
+            <dt>资料来源</dt>
+            <dd>
+              <a
+                v-if="slide.source.url?.startsWith('https://')"
+                :href="slide.source.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                >{{ slide.source.title }} <ExternalLink :size="12" /></a
+              ><span v-else>{{ slide.source.title }}</span>
+            </dd>
+          </div>
+        </dl>
+        <p v-if="atlas.state.catalog.mode === 'reference'">
+          纬度约定尚未核准，当前未做转换，仅供位置参考。
+        </p>
+      </details>
       <div class="detail-actions">
         <button class="primary-button" @click="locate"><Crosshair :size="18" />定位到火星球</button
         ><button

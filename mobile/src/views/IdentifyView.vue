@@ -27,7 +27,7 @@ async function connect() {
     const cap = await fetchCapabilities()
     if (!active) return
     available.value = cap?.classifier.available ?? false
-    serviceText.value = available.value ? '单图分类服务已连接' : '识别服务未连接，仍可浏览示例'
+    serviceText.value = available.value ? '单图分类服务已连接' : '识别服务未连接，仍可浏览影像'
   } catch {
     if (active) serviceText.value = '暂时无法连接识别服务'
   }
@@ -69,14 +69,14 @@ async function useSample(id: string) {
   clear()
   const sample = sampleById(id)
   if (!sample) {
-    message.value = '未找到这张公开示例。'
+    message.value = '未找到这张影像。'
     return
   }
   const revision = selection
   choosing.value = true
   try {
     const response = await fetch(sample.imageUrl, { signal: AbortSignal.timeout(10000) })
-    if (!response.ok) throw new Error('示例图片加载失败。')
+    if (!response.ok) throw new Error('影像加载失败。')
     const blob = await response.blob()
     if (!active || selection !== revision) return
     choose(new File([blob], `${id}.png`, { type: 'image/png' }))
@@ -121,9 +121,8 @@ onBeforeUnmount(() => {
 <template>
   <section class="content-view identify-view">
     <div class="page-heading">
-      <span class="eyebrow">看见形态，了解类型</span>
-      <h1>这是什么类型的滑坡？</h1>
-      <p>选择已裁好的单个滑坡，查看四类分数与图鉴解释。</p>
+      <h1>识别滑坡类型</h1>
+      <p>上传单个滑坡的裁片</p>
     </div>
     <div class="service-status">
       <span :class="{ ready: available }"></span>{{ serviceText
@@ -140,7 +139,7 @@ onBeforeUnmount(() => {
       <label class="upload-area" :class="{ 'has-image': preview }">
         <img v-if="preview" :src="preview" alt="待识别图片预览" /><template v-else
           ><ImagePlus :size="34" :stroke-width="1.4" /><strong>{{
-            choosing ? '正在加载示例…' : '选择滑坡影像'
+            choosing ? '正在加载影像…' : '选择滑坡影像'
           }}</strong
           ><span>PNG / JPEG · 最大 8 MB</span></template
         >
@@ -158,9 +157,7 @@ onBeforeUnmount(() => {
           <X :size="18" />
         </button>
       </div>
-      <p v-if="isSample" class="sample-caption">
-        已选公开训练示例，分类使用其已有目标框；仅用于体验流程。
-      </p>
+      <p v-if="isSample" class="sample-caption">编目影像 · 使用已有目标框</p>
       <button
         class="primary-button full-width"
         :disabled="!available || !file || busy || choosing"
@@ -170,8 +167,8 @@ onBeforeUnmount(() => {
       </button>
       <p v-if="message" role="alert" class="notice">{{ message }}</p>
       <div class="section-heading sample-picker-heading">
-        <h2>没有图片？试试这些</h2>
-        <RouterLink to="/atlas#samples">全部示例 →</RouterLink>
+        <h2>从目录选择</h2>
+        <RouterLink to="/atlas#samples">全部影像 →</RouterLink>
       </div>
       <div class="sample-picker">
         <button
@@ -180,14 +177,18 @@ onBeforeUnmount(() => {
           :disabled="busy"
           @click="useSample(sample.id)"
         >
-          <img :src="sample.imageUrl" :alt="`选择示例 ${sample.sourceId}`" /><span
+          <img :src="sample.imageUrl" :alt="`选择滑坡 ${sample.sourceId}影像`" /><span
             >{{ sample.type }} · {{ sample.sourceId }}</span
           >
         </button>
       </div>
-      <p class="result-note">
-        仅对单个滑坡分类型，不在整幅遥感图中寻找滑坡。点击“开始分类”后，图片会发送到已配置的识别服务，结果需人工复核。
-      </p>
+      <p class="result-note">开始分类后上传图片，结果需复核。</p>
+      <details class="quiet-details">
+        <summary>使用说明</summary>
+        <p>
+          只对单个滑坡分类，不检测整幅遥感图。目录图片来自训练数据，试用结果不作为独立测试成绩。
+        </p>
+      </details>
     </template>
   </section>
 </template>

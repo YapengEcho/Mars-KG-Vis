@@ -17,9 +17,7 @@ onMounted(() => atlas.load())
     <header class="app-header">
       <RouterLink to="/" class="brand" aria-label="Mars Atlas 首页"
         ><span class="brand-mark"></span
-        ><span
-          >MARS<span class="brand-light"> ATLAS</span><small>火星滑坡探索</small></span
-        ></RouterLink
+        ><span>MARS<span class="brand-light"> ATLAS</span></span></RouterLink
       >
       <RouterLink class="header-recognize" to="/recognize"
         ><ScanLine :size="17" />试试识别</RouterLink

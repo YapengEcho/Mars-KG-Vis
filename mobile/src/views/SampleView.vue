@@ -8,41 +8,42 @@ const sample = computed(() => sampleById(props.id))
 </script>
 <template>
   <section class="content-view sample-view">
-    <RouterLink to="/atlas#samples" class="text-button back-link">← 返回影像示例</RouterLink>
+    <RouterLink to="/atlas#samples" class="text-button back-link">← 返回目录</RouterLink>
     <template v-if="sample">
       <div class="page-heading">
-        <span class="eyebrow">真实影像 · 公开示例</span>
         <h1>滑坡 {{ sample.sourceId }}</h1>
         <p>编目类型：{{ typeInfo[sample.type].name }}（{{ sample.type }}）</p>
       </div>
       <div class="sample-media">
         <ZoomableImage :src="sample.imageUrl" :alt="`滑坡 ${sample.sourceId}`" />
       </div>
-      <p class="sample-caption">224 × 224 像素 · 灰度裁片 · 可缩放查看</p>
+      <p class="sample-caption">224 × 224 像素</p>
       <div class="sample-actions">
         <RouterLink :to="`/recognize?sample=${sample.id}`" class="primary-button"
-          >用这张图试分类</RouterLink
+          >识别这张影像</RouterLink
         ><a :href="sample.imageUrl" :download="`${sample.id}.png`" class="secondary-button"
-          >下载示例</a
+          >下载影像</a
         >
       </div>
       <RouterLink class="atlas-entry" :to="`/atlas/type/${sample.type}`"
         ><div>
-          <h2>{{ typeInfo[sample.type].name }}有什么特征？</h2>
-          <p>查看图鉴中的定义、观察要点与易混类型。</p>
+          <h2>了解{{ typeInfo[sample.type].name }}</h2>
         </div>
         <span>→</span></RouterLink
       >
-      <p class="muted">
-        图片来自已有训练裁片；试用结果用于体验流程，不作为独立测试成绩。类别沿用原编目，示例不能代表这一类的所有形态。
-      </p>
-      <p class="muted">
-        这 8 张是允许公开的部分示例。坐标约定尚待核准，因此未作为正式点位叠加到火星球。
-      </p>
-      <a :href="sample.source.url" target="_blank" rel="noopener noreferrer" class="text-button"
-        >编目来源：{{ sample.source.title }} ↗</a
-      >
+      <details class="quiet-details">
+        <summary>来源与使用说明</summary>
+        <p class="muted">
+          图片来自已有训练裁片；试用结果不作为独立测试成绩。类别沿用原编目，单张影像不能代表这一类的所有形态。
+        </p>
+        <p class="muted">
+          当前公开8张影像。球面位置沿用原始坐标，纬度约定尚待核准，未进行坐标转换。
+        </p>
+        <a :href="sample.source.url" target="_blank" rel="noopener noreferrer" class="text-button"
+          >编目来源：{{ sample.source.title }} ↗</a
+        >
+      </details>
     </template>
-    <p v-else class="notice">没有找到这个公开示例。</p>
+    <p v-else class="notice">没有找到这张影像。</p>
   </section>
 </template>

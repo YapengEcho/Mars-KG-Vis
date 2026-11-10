@@ -7,8 +7,8 @@
 | 字段 | 含义 |
 |---|---|
 | `version` | 数据版本 |
-| `mode` | `demo` 或 `catalog` |
-| `coordinateSystem` | 火星、东经为正、经度−180～180、星心纬度（度） |
+| `mode` | `reference`（原始真实坐标待核准）、`catalog`（已核准）或`demo`（测试数据） |
+| `coordinateSystem` | 火星、东经为正、经度−180～180；纬度约定必须与mode一致 |
 | `records` | 滑坡记录数组 |
 
 每条记录包含：
@@ -26,7 +26,7 @@
 | `source` | `{ "title": "来源名称", "url": null }`；链接使用HTTPS |
 | `isDemo` | 示例为 `true`，真实目录为 `false` |
 
-`coordinateSystem` 固定为：
+正式`catalog`及合成`demo`的`coordinateSystem`为：
 
 ```json
 {
@@ -38,15 +38,17 @@
 
 同一目录不混合示例和真实记录；缺失面积、图片、原始编号不以虚构数值补齐。原始标签和展示标签的映射应在导出时记录。
 
+`reference`使用相同的body与longitude，但latitude必须为`unverified, degrees`、记录`isDemo=false`。仅展示已知原始数值，没有做坐标转换，也不能称为星心坐标或精确位置。客户端显示“原始坐标·待核准”，不绘制参考记录的边界几何。前后端校验禁止仅修改mode将未核准坐标晋升为正式catalog。
+
 ## 接入
 
 静态目录放到 `mobile/public/data/catalog.local.json`，在 `mobile/.env.local` 设置 `VITE_CATALOG_URL=/data/catalog.local.json`。此路径优先于API。该本地文件不提交Git。
 
-API读取目录使用环境变量 `MARS_CATALOG_PATH`；前端设置 `VITE_API_BASE_URL` 后请求 `GET /api/catalog`。未设置目录和API时使用内置演示目录；加载失败时明确提示当前显示示例，并提供重试入口。
+API读取自定义目录使用环境变量`MARS_CATALOG_PATH`；前端设置`VITE_API_BASE_URL`后请求`GET /api/catalog`。默认双方都使用8条公开真实记录的reference视图，前端离线也可浏览；加载失败保留当前记录并提供重试。旧服务的默认demo数据不会覆盖真实记录，只有显式`VITE_CATALOG_URL`允许指定测试目录。
 
 APP的搜索字段与 `GET /api/landslides` 的 `q` 一致：记录 `id`、原始编号 `sourceId`、名称与说明；类型筛选独立。同一查询在APP、API与Agent中返回相同记录。
 
-页面通过 `#/?focus=<记录id或原始编号>` 定位点位；编号不存在或目录未加载时在页面内提示，不静默失败。目录模式在页面显示为“真实目录”，示例模式显示“示例数据”，二者不混用。
+页面通过`#/?focus=<记录id或原始编号>`定位点位；编号不存在或目录未加载时提示。reference与正式目录分开标识，不能把原始坐标显示为已经核准。
 
 定位到点位后，列表会自动滚动到对应卡片并高亮；相邻点位（相距不足 1.5°）可在提示条中依次切换。边界几何不随目录下发，选中记录后按需请求 `GET /api/landslides/{id}/geometry`（GeoJSON）；仅在响应 `canOverlay` 为真时于火星球绘制轮廓，坐标系未确认、记录无几何或服务未连接时开关禁用并给出对应说明。坐标定位输入经度、纬度后旋转火星至该坐标，若 500 km 内存在目录记录则一并选中，否则只定位坐标并说明。
 
