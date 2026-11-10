@@ -1,0 +1,6 @@
+# Optional offline inference runtime; install api/requirements.txt first.
+# Validated reference environment: Python 3.13, CPU or CUDA 12.8 PyTorch wheel.
+torch==2.11.0
+transformers==5.17.0
+numpy==2.5.3
+safetensors==0.8.0

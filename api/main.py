@@ -11,6 +11,10 @@ from fastapi.responses import StreamingResponse
 from api.sqlite_store import load_sqlite_catalog
 from api.catalog_query import Bounds, filter_records, parse_bbox
 from api.content_routes import router as content_router
+from api.classifier import DinoClassifier, PREPROCESSING_VERSION, REVIEW_POLICY
+from api.recognition_routes import RecognitionBoundary, router as recognition_router
+from api.recognition_store import TaskStore
+from api.recognition_worker import RecognitionWorker
 
 from api.agent import llm
 from api.agent.records import TraceRecorder
@@ -21,6 +25,7 @@ from api.schemas import (
     AgentCapability,
     Capabilities,
     Capability,
+    ClassifierCapability,
     Catalog,
     Health,
     Slide,
@@ -63,7 +68,8 @@ def query_bounds(bbox: str | None = Query(default=None, max_length=160)) -> Boun
 
 
 def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None,
-               asset_root: str | Path | None = None) -> FastAPI:
+               asset_root: str | Path | None = None, classifier=None,
+               recognition_database: str | Path | None = None) -> FastAPI:
     if database_path is not None and catalog_path is not None:
         raise ValueError("Choose a catalog file or a database, not both")
     selected_database = database_path or (os.environ.get("MARS_DB_PATH") if catalog_path is None else None)
@@ -82,7 +88,25 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         application.state.content_database = Path(selected_database).resolve() if selected_database else None
         configured_root = asset_root or os.environ.get('MARS_ASSET_ROOT')
         application.state.asset_root = Path(configured_root).expanduser().resolve() if configured_root else None
-        yield
+        model = classifier
+        manifest = os.environ.get('MARS_CLASSIFIER_MANIFEST')
+        if model is None and manifest:
+            model = DinoClassifier(manifest, device=os.environ.get('MARS_CLASSIFIER_DEVICE', 'cpu'),
+                                   threads=int(os.environ.get('MARS_CLASSIFIER_THREADS', '2')))
+        task_database = recognition_database or os.environ.get('MARS_RECOGNITION_DB')
+        if model is not None and not task_database:
+            raise ValueError('Set MARS_RECOGNITION_DB for durable recognition records.')
+        if task_database and selected_database and Path(task_database).resolve() == Path(selected_database).resolve():
+            raise ValueError('Recognition records must use a database separate from the geological catalog.')
+        worker = RecognitionWorker(TaskStore(task_database), model) if task_database else None
+        application.state.recognition = worker
+        if worker:
+            worker.start()
+        try:
+            yield
+        finally:
+            if worker:
+                worker.close()
 
     application = FastAPI(
         title="Mars API",
@@ -91,6 +115,8 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
         lifespan=lifespan,
     )
     application.include_router(content_router)
+    application.include_router(recognition_router)
+    application.add_middleware(RecognitionBoundary)
     default_origins = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:4173,http://127.0.0.1:4173,"
@@ -104,8 +130,8 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
     application.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     @application.get("/api/health", response_model=Health)
@@ -173,10 +199,19 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
     def capabilities(request: Request):
         catalog = get_catalog(request)
         agent_available = llm.is_configured()
+        worker = request.app.state.recognition
+        model = worker.model if worker else None
+        ready = bool(worker and worker.available)
         return Capabilities(
             dataMode=catalog.mode,
             version=catalog.version,
-            classifier=Capability(available=False, reason=CLASSIFICATION_REASON),
+            classifier=ClassifierCapability(available=ready,
+                reason=('Ready; results require review.' if ready else
+                        'Classification worker is unavailable.' if model else CLASSIFICATION_REASON),
+                modelVersion=model.version if model else None,
+                preprocessingVersion=PREPROCESSING_VERSION if model else None,
+                reviewPolicy=REVIEW_POLICY if model else None,
+                historyAvailable=worker is not None),
             detection=Capability(available=False, reason=DETECTION_REASON),
             agent=AgentCapability(
                 available=agent_available,
@@ -215,13 +250,6 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
             event_source(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    @application.post("/api/landslide/classify", status_code=503)
-    def classify():
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "MODEL_NOT_CONFIGURED", "message": CLASSIFICATION_REASON},
         )
 
     return application

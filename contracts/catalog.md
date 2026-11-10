@@ -66,7 +66,7 @@ python scripts/export_catalog.py --input PATH_TO_CATALOG --output mobile/public/
 | `GET /api/landslides/{id}` | 单条记录；不存在返回404 |
 | `GET /api/stats?q=&type=` | 同条件总数与 `byType` |
 | `GET /api/capabilities` | `classifier`、`detection` 的可用状态 |
-| `POST /api/landslide/classify` | 当前返回503 `MODEL_NOT_CONFIGURED` |
+| `POST /api/landslide/classify` | 配置后返回202识别任务；未配置时503，见[识别约定](recognition.md) |
 
 后续单图分类使用multipart字段 `file`；成功结果约定包含 `prediction`、`probabilities`、`confidence`、`uncertain` 和 `modelVersion`。检测服务另接任务接口，不把单图分类当作大图检测。
 

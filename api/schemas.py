@@ -93,6 +93,13 @@ class Capability(StrictModel):
     reason: str
 
 
+class ClassifierCapability(Capability):
+    modelVersion: str | None = None
+    preprocessingVersion: str | None = None
+    reviewPolicy: str | None = None
+    historyAvailable: bool = False
+
+
 class AgentCapability(StrictModel):
     available: bool
     model: str
@@ -100,7 +107,7 @@ class AgentCapability(StrictModel):
 class Capabilities(StrictModel):
     dataMode: DataMode
     version: str
-    classifier: Capability
+    classifier: ClassifierCapability
     detection: Capability
     agent: AgentCapability
 
