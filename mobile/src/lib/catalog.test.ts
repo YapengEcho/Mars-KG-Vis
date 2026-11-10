@@ -1,6 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { filterSlides, findSlide, parseCatalog } from './catalog'
+import {
+  crowdedSlideIds,
+  filterSlides,
+  findSlide,
+  nearestSlide,
+  neighborsOf,
+  parseCatalog,
+} from './catalog'
+import type { Slide } from '../types'
 import demo from '../../../examples/catalog.demo.json'
+
+function record(overrides: Partial<Slide> & Pick<Slide, 'id' | 'longitude' | 'latitude'>): Slide {
+  return {
+    sourceId: null,
+    name: overrides.id,
+    type: 'SL',
+    areaKm2: null,
+    summary: '',
+    imageUrl: null,
+    source: { title: '测试来源', url: null },
+    isDemo: true,
+    ...overrides,
+  }
+}
 
 describe('catalog boundary', () => {
   it('loads the demo without treating it as geological truth', () => {
@@ -81,5 +103,42 @@ describe('catalog boundary', () => {
     expect(findSlide([real], 'REAL-001')?.id).toBe('REAL-001')
     expect(findSlide([real], '100')).toBeUndefined()
     expect(findSlide([real], ' ')).toBeUndefined()
+  })
+  it('finds the nearest record to a coordinate', () => {
+    const records = [
+      record({ id: 'A', longitude: 10, latitude: 0 }),
+      record({ id: 'B', longitude: 12, latitude: 0 }),
+    ]
+    const near = nearestSlide(records, 11.6, 0.4)
+    expect(near?.slide.id).toBe('B')
+    expect(near?.distanceKm).toBeGreaterThan(0)
+    expect(nearestSlide([], 0, 0)).toBeUndefined()
+  })
+  it('lists overlapping neighbours nearest first', () => {
+    const records = [
+      record({ id: 'A', longitude: 0, latitude: 0 }),
+      record({ id: 'B', longitude: 0.4, latitude: 0 }),
+      record({ id: 'C', longitude: 0.9, latitude: 0 }),
+      record({ id: 'D', longitude: 30, latitude: 0 }),
+    ]
+    expect(neighborsOf(records, 'A').map((r) => r.id)).toEqual(['B', 'C'])
+    expect(neighborsOf(records, 'A', 0.5).map((r) => r.id)).toEqual(['B'])
+    expect(neighborsOf(records, 'missing')).toEqual([])
+  })
+  it('flags only records that share a neighbourhood', () => {
+    const records = [
+      record({ id: 'A', longitude: 0, latitude: 0 }),
+      record({ id: 'B', longitude: 0.6, latitude: 0 }),
+      record({ id: 'C', longitude: 60, latitude: 0 }),
+    ]
+    expect([...crowdedSlideIds(records)]).toEqual(['A', 'B'])
+    expect(crowdedSlideIds([records[2]!]).size).toBe(0)
+  })
+  it('treats records near a cell border as neighbours', () => {
+    const records = [
+      record({ id: 'A', longitude: 1.4, latitude: 0 }),
+      record({ id: 'B', longitude: 1.6, latitude: 0 }),
+    ]
+    expect(crowdedSlideIds(records).size).toBe(2)
   })
 })

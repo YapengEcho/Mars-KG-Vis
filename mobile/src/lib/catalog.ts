@@ -1,5 +1,6 @@
 import type { Catalog, Slide, SlideType } from '../types'
 import { slideTypes } from '../types'
+import { angularDistance, surfaceDistanceKm } from './marsCoordinates'
 
 export function parseCatalog(value: unknown): Catalog {
   if (!value || typeof value !== 'object') throw new Error('目录格式无效')
@@ -84,4 +85,71 @@ export function findSlide(records: Slide[], key: string): Slide | undefined {
   return records.find(
     (r) => r.id.toLocaleLowerCase() === term || String(r.sourceId ?? '') === term,
   )
+}
+
+/** Nearest catalog record to a coordinate, with its great-circle distance in km. */
+export function nearestSlide(
+  records: Slide[],
+  longitude: number,
+  latitude: number,
+): { slide: Slide; distanceKm: number } | undefined {
+  let best: { slide: Slide; distanceKm: number } | undefined
+  for (const slide of records) {
+    const distanceKm = surfaceDistanceKm(longitude, latitude, slide.longitude, slide.latitude)
+    if (!best || distanceKm < best.distanceKm) best = { slide, distanceKm }
+  }
+  return best
+}
+
+/**
+ * Records within `thresholdDeg` of the given record, nearest first. Used to
+ * step through overlapping markers on the globe.
+ */
+export function neighborsOf(records: Slide[], id: string, thresholdDeg = 1.5): Slide[] {
+  const origin = records.find((r) => r.id === id)
+  if (!origin) return []
+  return records
+    .filter((r) => r.id !== id)
+    .map((r) => ({
+      r,
+      distance: angularDistance(origin.longitude, origin.latitude, r.longitude, r.latitude),
+    }))
+    .filter((item) => item.distance <= thresholdDeg)
+    .sort((a, b) => a.distance - b.distance)
+    .map((item) => item.r)
+}
+
+/**
+ * Ids of records that share their neighbourhood with at least one other record,
+ * i.e. markers that can visually overlap at 1.5° spacing.
+ */
+export function crowdedSlideIds(records: Slide[], thresholdDeg = 1.5): Set<string> {
+  const buckets = new Map<string, Slide[]>()
+  const cell = (value: number, size: number): number => Math.floor(value / size)
+  for (const record of records) {
+    const key = `${cell(record.longitude, thresholdDeg)}:${cell(record.latitude, thresholdDeg)}`
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(record)
+    else buckets.set(key, [record])
+  }
+  const crowded = new Set<string>()
+  for (const record of records) {
+    const cx = cell(record.longitude, thresholdDeg)
+    const cy = cell(record.latitude, thresholdDeg)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const other of buckets.get(`${cx + dx}:${cy + dy}`) ?? []) {
+          if (other.id === record.id) continue
+          if (
+            angularDistance(record.longitude, record.latitude, other.longitude, other.latitude) <=
+            thresholdDeg
+          ) {
+            crowded.add(record.id)
+            crowded.add(other.id)
+          }
+        }
+      }
+    }
+  }
+  return crowded
 }

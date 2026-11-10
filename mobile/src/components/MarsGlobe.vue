@@ -9,6 +9,7 @@ import {
   normalizeLongitude,
 } from '../lib/marsCoordinates'
 import { typeInfo, type SlideType } from '../types'
+import type { Ring } from '../lib/geometry'
 
 interface GlobePoint {
   id: string
@@ -18,7 +19,15 @@ interface GlobePoint {
   name: string
 }
 
-const props = defineProps<{ points: GlobePoint[]; selectedId?: string }>()
+const props = withDefaults(
+  defineProps<{
+    points: GlobePoint[]
+    selectedId?: string
+    geometry?: Ring | null
+    showGeometry?: boolean
+  }>(),
+  { geometry: null, showGeometry: true },
+)
 const emit = defineEmits<{
   select: [id: string]
   basemap: [state: 'loading' | 'ready' | 'fallback']
@@ -41,6 +50,7 @@ let controls: OrbitControls | undefined
 let markers: THREE.InstancedMesh | undefined
 let selectedRing: THREE.Mesh | undefined
 let selectionDot: THREE.Mesh | undefined
+let boundaryLines: THREE.LineSegments | undefined
 let resizeObserver: ResizeObserver | undefined
 let intersectionObserver: IntersectionObserver | undefined
 let motionPreference: MediaQueryList | undefined
@@ -284,13 +294,12 @@ function rebuildMarkers(): void {
   updateSelection(false)
 }
 
-function focusPoint(id: string): void {
-  const point = usablePoints.value.find((item) => item.id === id)
-  if (!point || !camera) return
-  const direction = new THREE.Vector3(...lonLatToCartesian(point.longitude, point.latitude))
+function flyTo(longitude: number, latitude: number): void {
+  if (!camera) return
+  const direction = new THREE.Vector3(...lonLatToCartesian(longitude, latitude))
   const end = direction.multiplyScalar(camera.position.length())
   // Exact poles make a Y-up camera singular; keep a small stable offset.
-  if (Math.abs(point.latitude) > 89.5) end.z = 0.035
+  if (Math.abs(latitude) > 89.5) end.z = 0.035
   if (reducedMotion) {
     camera.position.copy(end)
     controls?.update()
@@ -298,6 +307,45 @@ function focusPoint(id: string): void {
   } else {
     focusAnimation = { start: camera.position.clone(), end, began: performance.now() }
   }
+}
+
+function focusPoint(id: string): void {
+  const point = usablePoints.value.find((item) => item.id === id)
+  if (!point) return
+  flyTo(point.longitude, point.latitude)
+}
+
+/** Rotate the globe so the given coordinate faces the camera. */
+function focusCoordinate(longitude: number, latitude: number): void {
+  flyTo(longitude, latitude)
+}
+
+/** Outline the selected record on the surface, skipping antimeridian jumps. */
+function rebuildBoundary(): void {
+  if (!scene) return
+  if (boundaryLines) {
+    scene.remove(boundaryLines)
+    boundaryLines.geometry.dispose()
+    ;(boundaryLines.material as THREE.Material).dispose()
+    boundaryLines = undefined
+  }
+  const ring = props.geometry
+  if (!props.showGeometry || !ring || ring.length < 3) return
+  const vertices: number[] = []
+  const addSegment = (from: Ring[number], to: Ring[number]): void => {
+    if (Math.abs(from[0] - to[0]) > 180) return
+    vertices.push(...lonLatToCartesian(from[0], from[1], radius + 0.012))
+    vertices.push(...lonLatToCartesian(to[0], to[1], radius + 0.012))
+  }
+  for (let index = 1; index < ring.length; index++) addSegment(ring[index - 1]!, ring[index]!)
+  addSegment(ring[ring.length - 1]!, ring[0]!)
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+  boundaryLines = new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({ color: '#ffd9a0', transparent: true, opacity: 0.95 }),
+  )
+  scene.add(boundaryLines)
 }
 
 function updateSelection(shouldFocus = true): void {
@@ -344,7 +392,7 @@ function resetView(): void {
   controls?.update()
 }
 
-defineExpose({ zoomIn, zoomOut, resetView, focusPoint })
+defineExpose({ zoomIn, zoomOut, resetView, focusPoint, focusCoordinate })
 
 function onKeydown(event: KeyboardEvent): void {
   if (!camera) return
@@ -482,6 +530,7 @@ onMounted(() => {
     renderer.domElement.addEventListener('webglcontextlost', onContextLost)
     addGlobe()
     rebuildMarkers()
+    rebuildBoundary()
     updateSelection()
     resizeObserver = new ResizeObserver(resize)
     resizeObserver.observe(host.value)
@@ -509,6 +558,7 @@ watch(
   () => props.selectedId,
   () => updateSelection(),
 )
+watch(() => [props.geometry, props.showGeometry], rebuildBoundary, { deep: true })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(frame)
@@ -525,6 +575,11 @@ onBeforeUnmount(() => {
   scene?.traverse((object) => {
     if (object instanceof THREE.Mesh) disposeMesh(object)
   })
+  if (boundaryLines) {
+    boundaryLines.geometry.dispose()
+    ;(boundaryLines.material as THREE.Material).dispose()
+    boundaryLines = undefined
+  }
   markers?.dispose()
   trackedTextures.forEach((texture) => texture.dispose())
   renderer?.dispose()

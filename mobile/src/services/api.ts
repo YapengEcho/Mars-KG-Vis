@@ -12,6 +12,16 @@ export async function fetchCapabilities(): Promise<Capabilities | null> {
   if (!r.ok) throw new Error('暂时无法连接识别服务')
   return r.json() as Promise<Capabilities>
 }
+/** Boundary geometry from the existing content API; `null` when the record has none. */
+export async function fetchSlideGeometry(id: string): Promise<unknown | null> {
+  if (!apiBase) return null
+  const r = await fetch(`${apiBase}/api/landslides/${encodeURIComponent(id)}/geometry`, {
+    signal: AbortSignal.timeout(10000),
+  })
+  if (r.status === 404) return null
+  if (!r.ok) throw new Error('边界几何暂时不可用')
+  return r.json() as Promise<unknown>
+}
 export async function classifyImage(file: File): Promise<unknown> {
   if (!apiBase) throw new Error('识别服务尚未接入')
   const body = new FormData()
