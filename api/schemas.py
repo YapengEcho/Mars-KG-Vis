@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 SlideType = Literal["SL", "SP", "FL", "CL"]
-DataMode = Literal["demo", "catalog"]
+DataMode = Literal["demo", "catalog", "reference"]
 
 
 class StrictModel(BaseModel):
@@ -16,7 +16,7 @@ class StrictModel(BaseModel):
 class CoordinateSystem(StrictModel):
     body: Literal["Mars"]
     longitude: Literal["east-positive, -180..180"]
-    latitude: Literal["planetocentric, degrees"]
+    latitude: Literal["planetocentric, degrees", "unverified, degrees"]
 
 
 class Source(StrictModel):
@@ -63,6 +63,9 @@ class Catalog(StrictModel):
 
     @model_validator(mode="after")
     def check_records(self) -> "Catalog":
+        expected_latitude = "unverified, degrees" if self.mode == "reference" else "planetocentric, degrees"
+        if self.coordinateSystem.latitude != expected_latitude:
+            raise ValueError("Unverified coordinates require reference mode; never promote them to an official catalog")
         ids = [record.id for record in self.records]
         if len(ids) != len(set(ids)):
             raise ValueError("Catalog record IDs must be unique")

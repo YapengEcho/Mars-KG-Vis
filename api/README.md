@@ -29,7 +29,7 @@ python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 
 图鉴导入、资源根目录配置与坐标状态见 [内容接口约定](../contracts/content.md)。JSON演示模式返回空内容列表；真实素材继续私下交接。
 
-默认读取 `examples/catalog.demo.json`，所有记录均为合成演示数据。设置环境变量 `MARS_CATALOG_PATH` 可读取同结构的本地 JSON；目录在服务启动时校验，修改后需重启。经纬度采用目录声明的火星坐标，原值返回。不存在的记录返回 404，非法查询参数返回 422。
+默认将已允许公开的8条真实记录及图片映射为`reference`目录，纬度字段为`unverified, degrees`，原值返回、不做坐标转换；8张图片可从`/samples/<id>.png`读取。参考模式不等于正式坐标已核准的目录。设置`MARS_CATALOG_PATH`可读取其他明确声明模式的本地JSON；目录在启动时校验，修改后需重启。演示数据只在显式指定`examples/catalog.demo.json`时使用。不存在的记录返回404，非法查询参数返回422。
 
 也支持SQLite，字段和现有JSON接口保持一致：
 

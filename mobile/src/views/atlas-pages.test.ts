@@ -27,7 +27,7 @@ async function render(path: string): Promise<string> {
 describe('atlas pages render without the private catalogue', () => {
   it('lists the four types and twelve cases', async () => {
     const html = await render('/atlas')
-    expect(html).toContain('滑坡类型与目录')
+    expect(html).toContain('滑坡图鉴')
     expect(html).toContain('/atlas/type/SL')
     expect(html).toContain('12 个案例')
     expect(html.match(/case-ls-/g)?.length).toBeGreaterThanOrEqual(12)
@@ -43,11 +43,12 @@ describe('atlas pages render without the private catalogue', () => {
     expect(html).toContain('SL 滑移型 vs SP 滑塌型')
     expect(html.match(/<table/g)?.length).toBe(2)
   })
-  it('explains a missing record instead of inventing coordinates', async () => {
+  it('distinguishes image alignment from the pending source coordinate documentation', async () => {
     const html = await render('/atlas/case/case-ls-0493')
     expect(html).toContain('远程堆积的滑移型')
-    expect(html).toContain('当前目录里没有')
-    expect(html).not.toMatch(/°[EW]/)
+    expect(html).toContain('已与 CTX 影像对齐')
+    expect(html).toContain('原始坐标说明待补')
+    expect(html).toContain('ls_0493')
   })
   it('rejects an unknown type politely', async () => {
     const html = await render('/atlas/type/XX')

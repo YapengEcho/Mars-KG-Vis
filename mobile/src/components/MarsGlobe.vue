@@ -387,7 +387,7 @@ function zoomOut(): void {
 function resetView(): void {
   if (!camera) return
   focusAnimation = undefined
-  camera.position.set(0, 0.65, 5.65)
+  camera.position.set(0, 0.65, 6.7)
   controls?.target.set(0, 0, 0)
   controls?.update()
 }
@@ -512,7 +512,7 @@ onMounted(() => {
     host.value.prepend(renderer.domElement)
     scene = new THREE.Scene()
     camera = new THREE.PerspectiveCamera(43, 1, 0.1, 50)
-    camera.position.set(0, 0.65, 5.65)
+    camera.position.set(0, 0.65, 6.7)
     controls = new OrbitControls(camera, renderer.domElement)
     controls.enablePan = false
     controls.enableDamping = true
@@ -644,7 +644,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   outline: none;
 }
 .mars-globe:focus-visible {
-  outline: 2px solid var(--accent, #86b6ff);
+  outline: 2px solid var(--accent, var(--color-retained-26));
   outline-offset: -3px;
   border-radius: 16px;
 }
@@ -663,7 +663,7 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   inset: 0;
   display: grid;
   place-items: center;
-  color: #b7c6db;
+  color: var(--color-retained-27);
   font-size: 12px;
   pointer-events: none;
 }
@@ -673,8 +673,8 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   bottom: 50px;
   right: 18px;
   pointer-events: none;
-  color: #c1ccdb;
-  font-size: 10px;
+  color: var(--color-retained-28);
+  font-size: 12px;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
 }
@@ -686,9 +686,9 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   justify-content: center;
 }
 .globe-fallback > p {
-  margin: 0 0 18px;
-  color: #9ba9bd;
-  font-size: 11px;
+  margin: 0 0 var(--space-md);
+  color: var(--color-retained-29);
+  font-size: 12px;
   line-height: 1.6;
   text-align: center;
 }
@@ -696,12 +696,12 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   position: relative;
   width: 100%;
   aspect-ratio: 2;
-  border: 1px solid #425672;
+  border: 1px solid var(--color-retained-30);
   border-radius: 5px;
-  background-color: #182333;
+  background-color: var(--color-retained-31);
   background-image:
-    linear-gradient(#819cbe33 1px, transparent 1px),
-    linear-gradient(90deg, #819cbe33 1px, transparent 1px);
+    linear-gradient(var(--color-retained-32) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-retained-32) 1px, transparent 1px);
   background-size: 16.666% 25%;
 }
 .map-point {
@@ -709,14 +709,14 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
   width: 9px;
   height: 9px;
   padding: 0;
-  border: 1px solid #101823;
+  border: 1px solid var(--color-retained-33);
   border-radius: 50%;
   transform: translate(-50%, -50%);
   cursor: pointer;
 }
 .map-point:focus-visible,
 .map-point.is-selected {
-  outline: 2px solid #d7e7ff;
+  outline: 2px solid var(--color-retained-34);
   outline-offset: 3px;
   z-index: 1;
 }
@@ -725,8 +725,8 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
 .map-south {
   position: absolute;
   left: -29px;
-  color: #9ba9bd;
-  font-size: 9px;
+  color: var(--color-retained-29);
+  font-size: 12px;
   transform: translateY(-50%);
 }
 .map-north {
@@ -741,9 +741,9 @@ function fallbackPosition(point: GlobePoint): Record<string, string> {
 .longitude-labels {
   display: flex;
   justify-content: space-between;
-  margin-top: 8px;
-  color: #9ba9bd;
-  font-size: 9px;
+  margin-top: var(--space-xs);
+  color: var(--color-retained-29);
+  font-size: 12px;
 }
 @media (max-width: 380px) {
   .globe-coordinate {

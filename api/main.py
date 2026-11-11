@@ -8,6 +8,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from api.public_catalog import load_public_catalog, PUBLIC_IMAGES
 from api.sqlite_store import load_sqlite_catalog
 from api.catalog_query import Bounds, filter_records, parse_bbox
 from api.content_routes import router as content_router
@@ -35,7 +37,6 @@ from api.schemas import (
 )
 
 
-DEFAULT_CATALOG = Path(__file__).resolve().parents[1] / "examples" / "catalog.demo.json"
 DEFAULT_DOCS = Path(__file__).resolve().parent / "data" / "docs" / "guidebook.demo.json"
 CLASSIFICATION_REASON = "Classification model is not configured."
 DETECTION_REASON = "Detection service is not configured."
@@ -73,16 +74,17 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
     if database_path is not None and catalog_path is not None:
         raise ValueError("Choose a catalog file or a database, not both")
     selected_database = database_path or (os.environ.get("MARS_DB_PATH") if catalog_path is None else None)
-    selected_path = Path(
-        catalog_path or os.environ.get("MARS_CATALOG_PATH") or DEFAULT_CATALOG
-    ).expanduser().resolve()
+    configured_catalog = catalog_path or os.environ.get("MARS_CATALOG_PATH")
+    selected_path = Path(configured_catalog).expanduser().resolve() if configured_catalog else None
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        application.state.catalog = (
-            load_sqlite_catalog(Path(selected_database))
-            if selected_database else load_catalog(selected_path)
-        )
+        if selected_database:
+            application.state.catalog = load_sqlite_catalog(Path(selected_database))
+        elif selected_path:
+            application.state.catalog = load_catalog(selected_path)
+        else:
+            application.state.catalog = load_public_catalog()
         application.state.retriever = build_retriever()
         application.state.tracer = TraceRecorder()
         application.state.content_database = Path(selected_database).resolve() if selected_database else None
@@ -117,6 +119,7 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
     application.include_router(content_router)
     application.include_router(recognition_router)
     application.add_middleware(RecognitionBoundary)
+    application.mount('/samples', StaticFiles(directory=PUBLIC_IMAGES), name='public-sample-images')
     default_origins = (
         "http://localhost:5173,http://127.0.0.1:5173,"
         "http://localhost:4173,http://127.0.0.1:4173,"

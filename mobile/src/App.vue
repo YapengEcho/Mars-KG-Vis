@@ -16,10 +16,11 @@ onMounted(() => atlas.load())
   <div class="app-shell">
     <header class="app-header">
       <RouterLink to="/" class="brand" aria-label="Mars Atlas 首页"
-        ><span class="brand-mark"></span
-        ><span
-          >MARS<span class="brand-light"> ATLAS</span><small>火星滑坡探索</small></span
-        ></RouterLink
+        ><span class="brand-mark" aria-hidden="true"></span
+        ><span>Mars<span class="brand-light"> Atlas</span></span></RouterLink
+      >
+      <RouterLink class="header-recognize" to="/recognize"
+        ><ScanLine :size="17" />试试识别</RouterLink
       >
     </header>
     <div v-if="atlas.state.error || atlas.state.storageError" class="notice" role="status">

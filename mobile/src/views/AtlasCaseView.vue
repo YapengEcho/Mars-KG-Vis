@@ -5,10 +5,15 @@ import { useRouter } from 'vue-router'
 import { atlas } from '../stores/atlas'
 import { atlasContent, caseById, caseRecord, casesOfType, typeEntry } from '../lib/atlas'
 import { coordinateLabel, typeInfo } from '../types'
+import { sampleById } from '../lib/samples'
+import { coordinateStatus } from '../lib/coordinateStatus'
+import ZoomableImage from '../components/ZoomableImage.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
+const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
 const item = computed(() => caseById(props.id))
+const sample = computed(() => (item.value ? sampleById(item.value.landslideId) : undefined))
 const entry = computed(() => (item.value ? typeEntry(item.value.type) : undefined))
 const record = computed(() =>
   item.value ? caseRecord(item.value, atlas.state.catalog.records) : undefined,
@@ -29,7 +34,9 @@ function locate() {
 <template>
   <section class="content-view">
     <RouterLink :to="item ? `/atlas/type/${item.type}` : '/atlas'" class="text-button back-link"
-      ><ArrowLeft :size="16" />{{ item ? `返回${typeInfo[item.type].name}图鉴` : '返回图鉴' }}</RouterLink
+      ><ArrowLeft :size="16" />{{
+        item ? `返回${typeInfo[item.type].name}图鉴` : '返回图鉴'
+      }}</RouterLink
     >
     <p v-if="!item" class="notice">没有这个案例：{{ props.id }}</p>
     <template v-else-if="entry">
@@ -49,6 +56,12 @@ function locate() {
       </div>
 
       <div class="section-heading"><h2>观察要点</h2></div>
+      <div v-if="sample" class="sample-media">
+        <ZoomableImage :src="sample.imageUrl" :alt="item.title" />
+      </div>
+      <RouterLink v-if="sample" class="text-button" :to="`/samples/${sample.id}`"
+        >查看影像 →</RouterLink
+      >
       <ol class="atlas-points case-points">
         <li v-for="point in item.observations" :key="point">{{ point }}</li>
       </ol>
@@ -60,12 +73,16 @@ function locate() {
           <dd>{{ record.id }} · 原始编号 {{ record.sourceId ?? '—' }}</dd>
         </div>
         <div>
-          <dt>火星经纬度</dt>
+          <dt>
+            {{ coordinates.label }}
+          </dt>
           <dd>{{ coordinateLabel(record.longitude, record.latitude) }}</dd>
         </div>
         <div>
           <dt>面积</dt>
-          <dd>{{ record.areaKm2 === null ? '暂无可靠记录' : `${record.areaKm2.toFixed(2)} km²` }}</dd>
+          <dd>
+            {{ record.areaKm2 === null ? '暂无可靠记录' : `${record.areaKm2.toFixed(2)} km²` }}
+          </dd>
         </div>
         <div>
           <dt>资料来源</dt>
@@ -80,10 +97,8 @@ function locate() {
           </dd>
         </div>
       </dl>
-      <p v-else class="notice">
-        当前目录里没有 {{ item.landslideId }}（示例目录与公开子集只含部分记录），
-        因此这一页只显示图鉴文案；接入完整目录后会自动显示坐标、面积与来源。
-      </p>
+      <p v-else class="notice">{{ item.landslideId }} 尚未包含在公开目录中。</p>
+      <p v-if="record && coordinates.note" class="muted">{{ coordinates.note }}</p>
 
       <div class="case-actions">
         <button class="primary-button" :disabled="!record" @click="locate">
@@ -95,7 +110,10 @@ function locate() {
           :aria-pressed="record ? atlas.isSaved(record.id) : false"
           @click="record && atlas.toggleSaved(record.id)"
         >
-          <Bookmark :size="17" :fill="record && atlas.isSaved(record.id) ? 'currentColor' : 'none'" />
+          <Bookmark
+            :size="17"
+            :fill="record && atlas.isSaved(record.id) ? 'currentColor' : 'none'"
+          />
           {{ record && atlas.isSaved(record.id) ? '已收藏' : '收藏这一条' }}
         </button>
         <RouterLink class="text-button" :to="`/atlas/type/${item.type}`">同类案例</RouterLink>

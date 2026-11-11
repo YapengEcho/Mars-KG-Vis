@@ -2,7 +2,12 @@ import type { Slide } from '../types'
 const configured = import.meta.env.VITE_API_BASE_URL?.trim()
 export const apiBase = configured ? configured.replace(/\/$/, '') : ''
 export interface Capabilities {
-  classifier: { available: boolean; reason?: string }
+  classifier: {
+    available: boolean
+    reason?: string
+    historyAvailable?: boolean
+    modelVersion?: string
+  }
   detection: { available: boolean; reason?: string }
   agent?: { available: boolean; model: string; reason?: string }
 }
@@ -21,18 +26,6 @@ export async function fetchSlideGeometry(id: string): Promise<unknown | null> {
   if (r.status === 404) return null
   if (!r.ok) throw new Error('边界几何暂时不可用')
   return r.json() as Promise<unknown>
-}
-export async function classifyImage(file: File): Promise<unknown> {
-  if (!apiBase) throw new Error('识别服务尚未接入')
-  const body = new FormData()
-  body.append('file', file)
-  const r = await fetch(`${apiBase}/api/landslide/classify`, {
-    method: 'POST',
-    body,
-    signal: AbortSignal.timeout(60000),
-  })
-  if (!r.ok) throw new Error(r.status === 503 ? '识别服务尚未就绪' : '识别失败，请稍后重试')
-  return r.json()
 }
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -66,7 +59,7 @@ export interface ChatResponse {
 }
 export async function sendChatMessage(
   messages: ChatMessage[],
-  sessionId?: string
+  sessionId?: string,
 ): Promise<ChatResponse> {
   if (!apiBase) {
     return {
@@ -110,7 +103,7 @@ export interface ChatStreamHandlers {
 export async function streamChatMessage(
   messages: ChatMessage[],
   handlers: ChatStreamHandlers,
-  sessionId?: string
+  sessionId?: string,
 ): Promise<void> {
   if (!apiBase) {
     handlers.onDone?.({
@@ -149,7 +142,8 @@ export async function streamChatMessage(
       if (!data) continue
       const event = JSON.parse(data) as ChatStreamEvent
       if (event.type === 'delta' && event.content) handlers.onDelta?.(event.content)
-      else if (event.type === 'status' && event.tool) handlers.onTool?.(event.tool, event.ok ?? false)
+      else if (event.type === 'status' && event.tool)
+        handlers.onTool?.(event.tool, event.ok ?? false)
       else if ((event.type === 'done' || event.type === 'error') && event.response) {
         handlers.onDone?.(event.response)
       }

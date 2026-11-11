@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowUpRight, Bookmark } from '@lucide/vue'
 import type { Slide } from '../types'
-import { typeInfo, coordinateLabel } from '../types'
+import { typeInfo } from '../types'
 import { atlas } from '../stores/atlas'
 defineProps<{ slide: Slide; compact?: boolean; highlighted?: boolean }>()
 </script>
@@ -16,13 +16,23 @@ defineProps<{ slide: Slide; compact?: boolean; highlighted?: boolean }>()
       @click="atlas.select(slide.id)"
       :aria-label="`查看${slide.name}详情`"
     >
-      <div class="terrain-swatch" :style="{ '--swatch': typeInfo[slide.type].color }">
+      <img
+        v-if="slide.imageUrl"
+        class="slide-thumbnail"
+        :src="slide.imageUrl"
+        :alt="slide.name"
+        width="224"
+        height="224"
+      />
+      <div v-else class="terrain-swatch" :style="{ '--swatch': typeInfo[slide.type].color }">
         <span>{{ slide.type }}</span>
       </div>
       <div class="slide-card-copy">
-        <span class="eyebrow">{{ slide.id }}</span>
         <h3>{{ slide.name }}</h3>
-        <p>{{ coordinateLabel(slide.longitude, slide.latitude) }}</p>
+        <p>
+          <span class="record-type">{{ slide.type }}</span
+          ><span>{{ typeInfo[slide.type].name }}</span>
+        </p>
       </div>
       <ArrowUpRight :size="18" class="muted" />
     </button>

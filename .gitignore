@@ -87,6 +87,7 @@ api/.pytest_cache/
 /weights/
 /output/
 /tmp/
+/.hallmark/
 
 # Full inventory and model assets are handed over separately; public subsets live in examples/.
 /data/manifest/

@@ -1,5 +1,5 @@
 import { computed, reactive } from 'vue'
-import demo from '../../../examples/catalog.demo.json'
+import { publicCatalog } from '../lib/publicCatalog'
 import type { Catalog, Slide } from '../types'
 import { parseCatalog } from '../lib/catalog'
 import { apiBase } from '../services/api'
@@ -14,7 +14,7 @@ function readSaved(): string[] {
   }
 }
 const state = reactive({
-  catalog: parseCatalog(demo) as Catalog,
+  catalog: publicCatalog as Catalog,
   selectedId: '' as string,
   savedIds: readSaved(),
   error: '',
@@ -74,10 +74,12 @@ export const atlas = {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(12000) })
       if (!r.ok) throw new Error()
-      state.catalog = parseCatalog(await r.json())
+      const loaded = parseCatalog(await r.json())
+      // An older default server must not silently replace the real records with fixtures.
+      if (loaded.mode !== 'demo' || import.meta.env.VITE_CATALOG_URL?.trim()) state.catalog = loaded
       state.error = ''
     } catch {
-      state.error = '目录加载失败，当前显示示例目录。请检查网络或服务后重试。'
+      state.error = '目录更新失败，已保留当前记录。'
     } finally {
       state.loading = false
     }

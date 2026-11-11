@@ -1,21 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import {
-  ArrowRight,
-  ChevronRight,
-  LocateFixed,
-  MapPin,
-  Minus,
-  Plus,
-  Search,
-  Shapes,
-  X,
-} from '@lucide/vue'
+import { ChevronRight, LocateFixed, MapPin, Minus, Plus, Search, Shapes, X } from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import MarsGlobe from '../components/MarsGlobe.vue'
 import SlideCard from '../components/SlideCard.vue'
+import CardRail from '../components/CardRail.vue'
 import { atlas } from '../stores/atlas'
 import { crowdedSlideIds, filterSlides, findSlide, nearestSlide, neighborsOf } from '../lib/catalog'
+import { coordinateStatus } from '../lib/coordinateStatus'
 import { parseSlideGeometry, type Ring } from '../lib/geometry'
 import { apiBase, fetchSlideGeometry } from '../services/api'
 import { formatMarsCoordinate, isMarsCoordinate } from '../lib/marsCoordinates'
@@ -36,6 +28,7 @@ const visibleCount = ref(pageSize)
 const basemap = ref<'loading' | 'ready' | 'fallback'>('loading')
 const showGeometry = ref(true)
 const coordinateOpen = ref(false)
+const searchOpen = ref(false)
 const longitudeInput = ref('')
 const latitudeInput = ref('')
 const coordinateNote = ref('')
@@ -43,9 +36,7 @@ const neighbors = ref<Slide[]>([])
 /** Index of the neighbor currently shown; -1 means the focused record itself. */
 const neighborIndex = ref(-1)
 const geometryRing = ref<Ring | null>(null)
-const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>(
-  'idle',
-)
+const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>('idle')
 let geometryRequest = 0
 const matches = computed(() => filterSlides(atlas.state.catalog.records, query.value, type.value))
 const visible = computed(() => matches.value.slice(0, visibleCount.value))
@@ -56,10 +47,13 @@ const focusedRecord = computed(
     atlas.state.catalog.records.find((item) => item.id === focusedId.value),
 )
 const crowdedCount = computed(() => crowdedSlideIds(matches.value, overlapDegrees).size)
+const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
 const modeLabel = computed(() =>
-  atlas.state.catalog.mode === 'catalog'
-    ? `真实目录 · ${atlas.state.catalog.version}`
-    : `示例数据 · ${atlas.state.catalog.version}`,
+  atlas.state.catalog.mode === 'reference'
+    ? coordinates.value.label
+    : atlas.state.catalog.mode === 'catalog'
+      ? '真实目录'
+      : '演示数据',
 )
 const basemapNote = computed(
   () =>
@@ -75,7 +69,10 @@ const geometryLabel = computed(() => {
     idle: '边界几何：未选点位',
     loading: '边界几何：正在加载…',
     ready: showGeometry.value ? '边界几何：已显示' : '边界几何：已隐藏',
-    blocked: '边界几何：坐标系未确认，暂不叠加',
+    blocked:
+      atlas.state.catalog.mode === 'reference'
+        ? '边界几何：当前参考目录暂不提供叠加'
+        : '边界几何：坐标系未确认，暂不叠加',
     missing: '边界几何：当前记录暂无',
     offline: '边界几何：未连接数据服务',
   }[geometryState.value]
@@ -91,6 +88,10 @@ watch(
     geometryRing.value = null
     if (!id) {
       geometryState.value = 'idle'
+      return
+    }
+    if (atlas.state.catalog.mode === 'reference') {
+      geometryState.value = 'blocked'
       return
     }
     if (!apiBase) {
@@ -164,7 +165,11 @@ async function focusFromRoute() {
 }
 watch(() => route.fullPath, focusFromRoute)
 watch(() => [atlas.state.loading, atlas.state.catalog.version], focusFromRoute)
-onMounted(focusFromRoute)
+onMounted(async () => {
+  await focusFromRoute()
+  if (!route.query.focus && atlas.state.catalog.records[0])
+    globe.value?.focusPoint(atlas.state.catalog.records[0].id)
+})
 function select(id: string) {
   focusedId.value = id
   const record = matches.value.find((item) => item.id === id)
@@ -247,41 +252,47 @@ async function locateCoordinate() {
   <section class="explore-view">
     <div class="explore-heading">
       <div>
-        <span class="eyebrow">MARS LANDSLIDES</span>
-        <h1>探索火星滑坡</h1>
-        <p>浏览滑坡分布、类型与案例。</p>
+        <h1>探索火星</h1>
       </div>
-      <span class="data-badge" :class="atlas.state.catalog.mode" aria-live="polite">{{
-        atlas.state.loading ? '目录加载中…' : modeLabel
-      }}</span>
-    </div>
-    <div class="search-box">
-      <Search :size="19" /><input
-        v-model="query"
-        aria-label="搜索滑坡编号、名称或说明"
-        placeholder="搜索编号、名称或说明"
-        inputmode="search"
-        @input="focusNote = ''"
-      /><button v-if="query" class="icon-button" aria-label="清除搜索" @click="clearQuery">
-        <X :size="16" />
-      </button>
-    </div>
-    <div class="type-filters" role="group" aria-label="类型筛选">
-      <button :class="{ active: !type }" :aria-pressed="!type" @click="clearFilters()">全部</button
-      ><button
-        v-for="t in slideTypes"
-        :key="t"
-        :class="{ active: type === t }"
-        :aria-pressed="type === t"
-        @click="toggleType(t)"
+      <button
+        class="icon-button search-toggle"
+        aria-label="搜索与筛选点位"
+        :aria-expanded="searchOpen"
+        @click="searchOpen = !searchOpen"
       >
-        <i :style="{ background: typeInfo[t].color }"></i>{{ typeInfo[t].name }}
+        <Search :size="20" />
       </button>
+    </div>
+    <div v-show="searchOpen || query || type" class="explore-search">
+      <div class="search-box">
+        <Search :size="19" /><input
+          v-model="query"
+          aria-label="搜索滑坡编号、名称或说明"
+          placeholder="搜索编号、名称或说明"
+          inputmode="search"
+          @input="focusNote = ''"
+        /><button v-if="query" class="icon-button" aria-label="清除搜索" @click="clearQuery">
+          <X :size="16" />
+        </button>
+      </div>
+      <div class="type-filters" role="group" aria-label="类型筛选">
+        <button :class="{ active: !type }" :aria-pressed="!type" @click="clearFilters()">
+          全部</button
+        ><button
+          v-for="t in slideTypes"
+          :key="t"
+          :class="{ active: type === t }"
+          :aria-pressed="type === t"
+          @click="toggleType(t)"
+        >
+          {{ typeInfo[t].name }}
+        </button>
+      </div>
     </div>
     <div class="globe-stage">
       <div class="globe-topline">
-        <span><i></i>MARS · {{ type || 'ALL TYPES' }}</span
-        ><span>{{ matches.length }} 个点位</span>
+        <span>{{ type ? typeInfo[type].name : '全球视野' }}</span
+        ><span>{{ modeLabel }}</span>
       </div>
       <MarsGlobe
         ref="globe"
@@ -298,6 +309,7 @@ async function locateCoordinate() {
         ><button class="icon-button" aria-label="缩小火星球" @click="globe?.zoomOut()">
           <Minus :size="20" /></button
         ><button
+          v-if="geometryState === 'ready'"
           class="icon-button"
           :disabled="geometryState !== 'ready'"
           aria-label="显示或隐藏当前记录的边界几何"
@@ -317,7 +329,11 @@ async function locateCoordinate() {
           <LocateFixed :size="19" />
         </button>
       </div>
-      <p v-if="focusedRecord" class="globe-geometry-status" aria-live="polite">
+      <p
+        v-if="focusedRecord && geometryState === 'ready'"
+        class="globe-geometry-status"
+        aria-live="polite"
+      >
         {{ geometryLabel }}
       </p>
       <form v-if="coordinateOpen" class="coordinate-panel" @submit.prevent="locateCoordinate">
@@ -347,18 +363,17 @@ async function locateCoordinate() {
         <p v-if="coordinateNote" class="coordinate-note" role="status">{{ coordinateNote }}</p>
       </form>
       <div class="globe-footer">
-        <span>拖动旋转 · 双指缩放 · 点选查看</span><span>{{ basemapNote }}</span>
+        <span>{{ basemapNote }}</span>
       </div>
     </div>
     <section class="discovery-section">
       <div class="section-heading">
         <div>
-          <span class="eyebrow">LANDSLIDE CATALOG</span>
           <h2>
             {{ query || type ? '查询结果' : '滑坡目录' }} <span>{{ matches.length }}</span>
           </h2>
         </div>
-        <RouterLink to="/atlas">查看图鉴 <ArrowRight :size="16" /></RouterLink>
+        <RouterLink to="/atlas#samples">查看全部</RouterLink>
       </div>
       <p v-if="focusNote" class="focus-hint" role="status">
         <LocateFixed :size="14" /><span>{{ focusNote }}</span
@@ -378,11 +393,13 @@ async function locateCoordinate() {
           }}
         </span>
       </p>
-      <p v-if="crowdedCount" class="dense-note">
-        其中 {{ crowdedCount }} 个点位彼此相距不足 {{ overlapDegrees }}°，可能重叠显示；点选后可逐个查看相邻点位。
-      </p>
       <p v-if="atlas.state.loading" class="list-status">正在加载目录，完成后刷新列表与点位…</p>
-      <div v-if="matches.length" class="discovery-cards">
+      <CardRail
+        v-if="matches.length"
+        :key="`${query}:${type}`"
+        :count="visible.length"
+        label="滑坡目录"
+      >
         <SlideCard
           v-for="slide in visible"
           :key="slide.id"
@@ -390,7 +407,7 @@ async function locateCoordinate() {
           compact
           :highlighted="slide.id === focusedId"
         />
-      </div>
+      </CardRail>
       <div v-else-if="!atlas.state.loading" class="empty-inline">
         没有匹配的点位，试试其他编号、名称或类型。
       </div>
@@ -401,11 +418,14 @@ async function locateCoordinate() {
         <span class="load-count">已显示 {{ visible.length }} / {{ matches.length }}</span>
       </div>
     </section>
-    <p v-if="atlas.state.catalog.mode === 'demo'" class="page-footnote">
-      示例目录用于体验浏览流程，不代表真实滑坡位置或分类。
-    </p>
-    <p v-else class="page-footnote">
-      目录 {{ atlas.state.catalog.version }} · 记录来源与编号可在详情中核对。
-    </p>
+    <details class="quiet-details">
+      <summary>数据说明</summary>
+      <p>
+        当前展示 {{ atlas.state.catalog.records.length }} 条公开记录。{{
+          coordinates.note
+        }}来源见记录详情。
+      </p>
+      <p v-if="crowdedCount">相邻点位可能重叠，选中后可依次查看。</p>
+    </details>
   </section>
 </template>

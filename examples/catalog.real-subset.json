@@ -5,7 +5,7 @@
     "body": "Mars",
     "longitude": "east-positive, -180..180",
     "latitude": "unverified, degrees",
-    "notice": "原始PRJ标注为地球WGS84，源火星纬度约定待核准；不能直接作为APP正式目录"
+    "notice": "已与 CTX 影像对齐，按星心纬度使用原始经纬度，未做坐标转换。原始坐标说明待补。"
   },
   "records": [
     {
