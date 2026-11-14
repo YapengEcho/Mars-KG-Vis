@@ -1600,3 +1600,201 @@ main {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Recognition records (week 4) */
+.service-status .text-button {
+  margin-left: auto;
+  padding: 0;
+  color: inherit;
+  text-decoration: underline;
+}
+.file-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.file-meta em {
+  font-style: normal;
+  color: var(--subtle);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.recognition-wait {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.recognition-wait .text-button {
+  padding: 0;
+}
+.result-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.type-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.result-badge {
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border: 1px solid #70c6ad55;
+  border-radius: 20px;
+  background: #70c6ad1c;
+  color: #8fd8c2;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+.result-badge.uncertain {
+  border-color: #e2b87855;
+  background: #e2b8781c;
+  color: #e8c79f;
+}
+.probability-list {
+  display: grid;
+  gap: 9px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.probability-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.probability-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.probability-track {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.probability-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+.result-note {
+  margin-top: 16px;
+}
+.result-saved {
+  margin-top: 8px;
+  color: #8fd8c2;
+}
+.result-meta {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.result-actions .secondary-button {
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 11px;
+}
+.danger-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0;
+  color: #e8a08f;
+}
+.recognition-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+.recognition-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+}
+.recognition-item:hover {
+  border-color: var(--selected-border);
+}
+.recognition-item > svg {
+  flex-shrink: 0;
+  color: var(--subtle);
+}
+.recognition-item img,
+.recognition-thumb {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--surface-raised);
+}
+.recognition-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--subtle);
+}
+.recognition-info {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+.recognition-info strong {
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.recognition-info em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+.recognition-info > span {
+  color: var(--subtle);
+  font-size: 10px;
+}
+.recognition-image-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  border: 1px dashed var(--selected-border);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.empty-inline .text-button {
+  margin-left: 6px;
+  padding: 0;
+  text-decoration: underline;
+}

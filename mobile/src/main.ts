@@ -19,6 +19,10 @@ const router = createRouter({
     { path: '/recognize', component: () => import('./views/IdentifyView.vue') },
     { path: '/chat', component: () => import('./views/ChatView.vue') },
     { path: '/mine', component: () => import('./views/MineView.vue') },
+    {
+      path: '/mine/recognitions/:id',
+      component: () => import('./views/RecognitionDetailView.vue'),
+    },
     { path: '/identify', redirect: '/recognize' },
     { path: '/assistant', redirect: '/chat' },
     { path: '/saved', redirect: '/mine' },

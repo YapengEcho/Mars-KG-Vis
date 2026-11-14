@@ -1,8 +1,28 @@
 <script setup lang="ts">
-import { Bookmark, ArrowRight, Info } from '@lucide/vue'
+import { onMounted, ref } from 'vue'
+import { Bookmark, ArrowRight, ChevronRight, Info, ScanLine } from '@lucide/vue'
 import SlideCard from '../components/SlideCard.vue'
 import PageHeading from '../components/PageHeading.vue'
 import { atlas } from '../stores/atlas'
+import { recognitions } from '../stores/recognitions'
+import { fetchCapabilities } from '../services/api'
+import { formatPercent, formatRecognizedAt } from '../lib/recognition'
+import { typeInfo } from '../types'
+
+const serviceReady = ref(false)
+const serviceText = ref('正在检查识别服务…')
+onMounted(async () => {
+  try {
+    const cap = await fetchCapabilities()
+    if (!cap) serviceText.value = '尚未连接后端服务，识别记录只在本机回看'
+    else if (cap.classifier.available) {
+      serviceReady.value = true
+      serviceText.value = '单图分类服务已连接'
+    } else serviceText.value = '识别服务尚未接入，识别记录只在本机回看'
+  } catch {
+    serviceText.value = '暂时无法连接识别服务'
+  }
+})
 </script>
 <template>
   <section class="content-view">
@@ -31,14 +51,43 @@ import { atlas } from '../stores/atlas'
     </div>
 
     <div class="section-heading mine-section">
-      <h2>识别记录</h2>
+      <h2>识别记录 <span>{{ recognitions.state.records.length }}</span></h2>
+      <span class="save-note">仅保存在本机 · 最近识别在前</span>
     </div>
-    <div class="empty-inline">识别记录将在接入模型后展示，当前暂无记录。</div>
+    <p v-if="recognitions.state.storageError" class="storage-warning" role="status">
+      {{ recognitions.state.storageError }}
+    </p>
+    <div v-if="recognitions.state.records.length" class="recognition-list">
+      <RouterLink
+        v-for="item in recognitions.state.records"
+        :key="item.id"
+        :to="`/mine/recognitions/${item.id}`"
+        class="recognition-item"
+      >
+        <img v-if="item.image" :src="item.image" alt="" />
+        <span v-else class="recognition-thumb"><ScanLine :size="22" :stroke-width="1" /></span>
+        <span class="recognition-info">
+          <strong>{{ typeInfo[item.prediction].name }} · {{ item.prediction }}</strong>
+          <em
+            >{{ formatPercent(item.confidence)
+            }}<template v-if="item.uncertain"> · 待复核</template></em
+          >
+          <span>{{ formatRecognizedAt(item.createdAt) }}</span>
+        </span>
+        <ChevronRight :size="17" />
+      </RouterLink>
+    </div>
+    <div v-else class="empty-inline">
+      还没有识别记录。上传单张滑坡裁图并完成识别后，可在这里回看。
+      <RouterLink to="/recognize" class="text-button">去识别</RouterLink>
+    </div>
 
     <div class="section-heading mine-section">
       <h2>版本与服务状态</h2>
     </div>
-    <div class="service-status"><span></span>识别服务尚未接入</div>
+    <div class="service-status">
+      <span :class="{ ready: serviceReady }"></span>{{ serviceText }}
+    </div>
     <div class="info-card">
       <Info :size="18" />
       <p>版本 0.1.0 · 收藏与识别记录仅保存在当前设备，不会上传。</p>

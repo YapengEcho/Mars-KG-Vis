@@ -1,4 +1,5 @@
 import type { Slide } from '../types'
+import { parseClassification, type ClassificationResult } from '../lib/recognition'
 const configured = import.meta.env.VITE_API_BASE_URL?.trim()
 export const apiBase = configured ? configured.replace(/\/$/, '') : ''
 export interface Capabilities {
@@ -22,17 +23,70 @@ export async function fetchSlideGeometry(id: string): Promise<unknown | null> {
   if (!r.ok) throw new Error('边界几何暂时不可用')
   return r.json() as Promise<unknown>
 }
-export async function classifyImage(file: File): Promise<unknown> {
-  if (!apiBase) throw new Error('识别服务尚未接入')
+export class RecognitionError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message)
+  }
+}
+function describeStatus(status: number): string {
+  switch (status) {
+    case 413:
+      return '图片分辨率过大，请上传不超过 4096×4096 的裁图。'
+    case 415:
+      return '暂不支持该图片格式，请使用单帧 PNG 或 JPEG。'
+    case 422:
+      return '图片无法解析，请重新选择有效的裁图。'
+    case 429:
+      return '识别请求过多，请稍后再试。'
+    case 503:
+      return '识别服务尚未就绪（503），请稍后重试。'
+    default:
+      return `识别失败（HTTP ${status}），请稍后重试。`
+  }
+}
+/**
+ * Single-crop classification. Resolves with a validated result; rejects with a
+ * RecognitionError carrying the HTTP status when the service answered.
+ * `signal` lets the page cancel the wait without touching the shared timeout.
+ */
+export async function classifyImage(
+  file: File,
+  signal?: AbortSignal,
+): Promise<ClassificationResult> {
+  if (!apiBase)
+    throw new RecognitionError('尚未连接识别服务：请先启动 FastAPI，并配置 VITE_API_BASE_URL。')
   const body = new FormData()
   body.append('file', file)
-  const r = await fetch(`${apiBase}/api/landslide/classify`, {
-    method: 'POST',
-    body,
-    signal: AbortSignal.timeout(60000),
-  })
-  if (!r.ok) throw new Error(r.status === 503 ? '识别服务尚未就绪' : '识别失败，请稍后重试')
-  return r.json()
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, 65000)
+  const cancel = () => controller.abort()
+  signal?.addEventListener('abort', cancel)
+  let response: Response
+  try {
+    response = await fetch(`${apiBase}/api/landslide/classify`, {
+      method: 'POST',
+      body,
+      signal: controller.signal,
+    })
+  } catch {
+    if (timedOut) throw new RecognitionError('识别超时（65 秒），请重试或换一张更小的裁图。')
+    if (signal?.aborted) throw new RecognitionError('已取消本次识别。')
+    throw new RecognitionError('无法连接识别服务，请检查网络或服务状态。')
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', cancel)
+  }
+  if (!response.ok) throw new RecognitionError(describeStatus(response.status), response.status)
+  const parsed = parseClassification(await response.json().catch(() => null))
+  if (!parsed) throw new RecognitionError('识别服务返回的数据无法识别，请稍后重试。')
+  return parsed
 }
 export interface ChatMessage {
   role: 'user' | 'assistant'
