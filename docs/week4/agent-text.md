@@ -59,7 +59,7 @@ python scripts/export_atlas_content.py --out output/week4_atlas_handoff --sample
 - `atlas-citations.csv` 给出每条引用挂在谁身上（`type` / `comparison` / `case`）、页码定位；
   页面上的“引用与出处”区块与这份 CSV 同源。
 - 案例的图片与尺度来源不是论文，而是交接包的 224 像素裁片：图幅名、窗口边长、m/像素 在
-  `atlas-cases.csv` 与 `docs/week4/atlas-asset-check.md` 里；检索文本只写“公开影像：有/暂无”，不写路径。
+  `atlas-cases.csv`（交付包内）与 `docs/week4/atlas-asset-check.md` 里；检索文本只写“公开影像：有/暂无”，不写路径。
 
 ## 5. 入库
 

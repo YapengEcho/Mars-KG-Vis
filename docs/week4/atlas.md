@@ -9,7 +9,7 @@
 | 交付物 | 位置 | 说明 |
 | --- | --- | --- |
 | 内容版本与改动说明 | [atlas-content.md](atlas-content.md) | v1 → v2 的差异、字段口径、引用口径 |
-| 图文对应检查表 / 缺项表 | [assets.md](assets.md) + `atlas-asset-check.md` / `.csv` | 12 例逐条核对，8 例公开、4 例缺影像 |
+| 图文对应检查表 / 缺项表 | [assets.md](assets.md) + `atlas-asset-check.md`（`.csv` 见交付包） | 12 例逐条核对，8 例公开、4 例缺影像 |
 | 四类说明与对比 | `mobile/src/content/atlas.json` | 定义、可观察特征、易混类型、边界，带论文页码 |
 | 案例关联 | 同上 `cases[12]` | `landslideId`/`type`/观察要点/引用与 `caseIds` 一一对应 |
 | 供助手使用的文本与来源索引 | [agent-text.md](agent-text.md) + 导出文件 | 18 个检索块，含来源与页码 |

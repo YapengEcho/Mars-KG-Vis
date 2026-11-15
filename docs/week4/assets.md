@@ -3,11 +3,13 @@
 表由脚本生成，不手工维护：
 
 ```bash
-python scripts/check_content_assets.py --out docs/week4     # 写 docs/week4/atlas-asset-check.{md,csv}
+python scripts/check_content_assets.py --out docs/week4     # 写 docs/week4/atlas-asset-check.md（仓库内只留 md）
+python scripts/check_content_assets.py --out output/week4_atlas_handoff  # 交付用，含 .csv
 python scripts/check_content_assets.py --out <临时目录>      # 只查看、不落文档
 ```
 
-输出在 `docs/week4/atlas-asset-check.md`（人看）与 `atlas-asset-check.csv`（表格工具用）。
+输出在 `docs/week4/atlas-asset-check.md`（仓库内提交这一份，人看）。`atlas-asset-check.csv` 是表格工具用的副本，
+只放在交付包和 `output/` 里：仓库的公开边界检查不允许跟踪 `.csv`，`docs/**/*.csv` 已在 `.gitignore` 中。
 脚本读三样东西：`mobile/src/content/atlas.json`、交接包的 `01_catalog` 与 `02_vectors`、
 `examples/recognition.samples.json` 与 `examples/catalog.real-subset.json`；只读，不写交接包。
 
