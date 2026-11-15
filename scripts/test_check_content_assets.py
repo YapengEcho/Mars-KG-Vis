@@ -99,6 +99,35 @@ class BuildRowsTest(unittest.TestCase):
             _, problems = checker.build_rows(content, _catalog(), _index(), samples, set(), Path(tmp))
         self.assertTrue(any("sha256" in p for p in problems))
 
+    def test_one_side_matching_is_not_enough(self):
+        """The public list matching while the handoff index differs must fail."""
+        content = _content()
+        content["cases"][0]["previewScale"] = "42.8 m/像素"
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "samples" / "ls_0001.png"
+            sample.parent.mkdir()
+            sample.write_bytes(b"mars")
+            digest = checker.sha256_of(sample)
+            samples = {"ls_0001": {"imageUrl": "/samples/ls_0001.png", "sha256": digest, "type": "SL"}}
+            index = _index()
+            index["ls_0001"]["image_sha256"] = "1" * 64
+            rows, problems = checker.build_rows(content, _catalog(), index, samples, {"ls_0001"}, Path(tmp))
+        self.assertTrue(any("交接包 image_index" in p for p in problems), problems)
+        self.assertFalse(rows[0]["image"].startswith("有"), rows[0]["image"])
+
+    def test_missing_handoff_hash_is_reported(self):
+        content = _content()
+        content["cases"][0]["previewScale"] = "42.8 m/像素"
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = Path(tmp) / "samples" / "ls_0001.png"
+            sample.parent.mkdir()
+            sample.write_bytes(b"mars")
+            digest = checker.sha256_of(sample)
+            samples = {"ls_0001": {"imageUrl": "/samples/ls_0001.png", "sha256": digest, "type": "SL"}}
+            rows, problems = checker.build_rows(content, _catalog(), _index(), samples, {"ls_0001"}, Path(tmp))
+        self.assertTrue(any("登记缺失" in p for p in problems), problems)
+        self.assertFalse(rows[0]["image"].startswith("有"), rows[0]["image"])
+
 
 if __name__ == "__main__":
     unittest.main()

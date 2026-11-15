@@ -50,6 +50,7 @@
 | 缺图提示改为“仓库不收录影像资源” | `AtlasCaseView.vue`、`limits[6]` | 影像留在交接包，仓库只放文本与可核对的计数 |
 | 新增第 7 条 `limits`：仓库不收录影像资源，缺影像的案例页显示“暂无公开影像”，助手不得说“可以看这张图” | `limits[6]` | 12 例里 4 例没有公开预览，必须先在文本里挡住错误说法 |
 | 案例页无影像时给出明确提示 | `AtlasCaseView.vue` | 之前只是不显示图片，容易被理解成加载失败 |
+| 资源核对脚本改为哈希**双边一致**（公开清单与交接包 `image_index.json` 同时匹配）；只对上一方或一边缺登记都判为不符，并补 2 条回归测试 | `scripts/check_content_assets.py`、`scripts/test_check_content_assets.py` | 旧逻辑只要任一方匹配就写“哈希一致”，会把只对上一边的影像误判为通过；内容版本不变，仍为 `atlas-20261115-v3` |
 | 类型页案例卡片给缺图案例加“暂无公开影像”标签 | `AtlasTypeView.vue` | 让图鉴入口就能看出哪几例只有文字 |
 | 导出增加 `public_image` 列与“公开影像：有/暂无”检索行 | `scripts/export_atlas_content.py` | 助手回答问题时要能区分“有图”和“只有文字” |
 | 新增资源核对脚本 | `scripts/check_content_assets.py` | 逐例核对编号、类型、图幅、尺度、哈希、引用 |

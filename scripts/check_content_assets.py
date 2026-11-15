@@ -126,18 +126,28 @@ def build_rows(
                 gaps.append("公开影像文件缺失 → 滕佳杰")
             else:
                 digest = sha256_of(path)
-                expected = {str(sample.get("sha256", "")), str((image or {}).get("image_sha256", ""))}
-                expected.discard("")
-                if digest not in expected:
-                    problems.append(f"{case_id}：公开影像 sha256 与登记不一致")
-                    image_state = "哈希不符"
+                listed = str(sample.get("sha256", "")).strip().lower()
+                packed = str((image or {}).get("image_sha256", "")).strip().lower()
+                if not listed or not packed:
+                    missing = "公开清单" if not listed else "交接包 image_index"
+                    problems.append(f"{case_id}：公开影像 sha256 登记缺失（{missing} 未登记）")
+                    image_state = "哈希登记缺失"
+                    gaps.append(f"补 {missing} 的 sha256 → 滕佳杰")
+                elif digest != listed or digest != packed:
+                    differs = []
+                    if digest != listed:
+                        differs.append("公开清单")
+                    if digest != packed:
+                        differs.append("交接包 image_index")
+                    problems.append(f"{case_id}：公开影像 sha256 与{'、'.join(differs)}不一致")
+                    image_state = f"哈希不符（{'、'.join(differs)}）"
                     gaps.append("公开影像哈希不符 → 滕佳杰")
                 elif sample.get("type") != kind:
                     problems.append(f"{case_id}：公开影像类型 {sample.get('type')} 与正文 {kind} 不一致")
                     image_state = "类型不符"
                     gaps.append("影像类型与正文不符 → 滕佳杰")
                 else:
-                    image_state = f"有（{path.name}，224×224，哈希一致）"
+                    image_state = f"有（{path.name}，224×224，哈希双边一致：清单+交接包）"
 
         locator = str(case.get("citationLocator", ""))
         if not locator:
@@ -190,7 +200,8 @@ def write_markdown(path: Path, rows: list[dict[str, str]], summary: dict[str, An
         "- **目录关联状态**：`已在公开子集` 指该记录列在 `examples/catalog.real-subset.json`；"
         "`仅在完整目录` 指记录存在于私有全库，但不在公开子集，公开仓库不复制其坐标。",
         "- **公开影像状态**：只核对 `examples/recognition.samples.json` 登记的 224×224 裁片，"
-        "并重算 SHA-256；未登记的一律写“暂无公开影像”，不用私有图片补位。",
+        "并重算 SHA-256；要求公开清单与交接包 `image_index.json` **两边同时匹配**才写「哈希双边一致」，"
+        "只对上一方（或一边缺登记）都记为不符；未登记的一律写“暂无公开影像”，不用私有图片补位。",
         "- **尺度来源**：由裁片的 `native_window_world_m` 宽度除以 224 像素算出，"
         "与正文 `previewScale` 交叉核对；不同案例尺度不同，不能写成全批统一值。",
         "- **引用状态**：页码为 PDF 物理页码（含封面，共 28 页），与期刊印刷页码不同。",

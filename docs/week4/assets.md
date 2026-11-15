@@ -20,7 +20,7 @@ python scripts/check_content_assets.py --out <临时目录>      # 只查看、�
 | `caseId` / `landslideId` | 内容文件 | `case-ls-XXXX` 与 `ls_XXXX` 编号一致 |
 | `类型` | 内容文件 + 完整目录 | 文本里的 `type` 与目录 `type` 相同 |
 | `目录关联状态` | `examples/catalog.real-subset.json` | 8 条公开编号显示“已在公开子集”，其余“仅在完整目录” |
-| `公开影像状态` | `examples/recognition.samples.json` + `mobile/public/samples/*.png` | 文件存在且 SHA-256 与样例清单、`image_index.json` 都一致才显示“哈希一致” |
+| `公开影像状态` | `examples/recognition.samples.json` + `mobile/public/samples/*.png` | 文件存在，且重算的 SHA-256 **同时**等于样例清单与交接包 `image_index.json` 两边登记的哈希，才写“哈希双边一致”；只对上一方或一边缺登记都算不符 |
 | `尺度来源` | 交接包 `image_index.json` 的裁片窗口 | 窗口边长 ÷ 224 与案例文本里的 m/像素 相差 <0.1 |
 | `图幅` | `image_index.json` 的 `source_tiles` | 与案例文本的 `tile` 相同 |
 | `引用状态` | 内容文件 | `citationLocator` 里带“PDF 第 … 页” |
@@ -28,7 +28,7 @@ python scripts/check_content_assets.py --out <临时目录>      # 只查看、�
 
 ## 2. 本周核对结果
 
-`核对完成：12 例，公开影像 8 例，公开目录 8 例，问题 0 条`。12 例的编号、类型、图幅、尺度、哈希、引用全部对上：
+`核对完成：12 例，公开影像 8 例，公开目录 8 例，问题 0 条`。12 例的编号、类型、图幅、尺度、哈希（双边一致）、引用全部对上：
 
 | 类型 | 有公开影像 / 总数 | 案例 |
 | --- | --- | --- |
@@ -64,3 +64,4 @@ python scripts/check_content_assets.py --out <临时目录>      # 只查看、�
 - 脚本默认读 `D:\python_project\teng_jiajie_week1_20261024`；交接包换路径时用 `--handoff` 指定。
 - 没有交接包时脚本以退出码 2 结束（“找不到交接包”），不会写半张表。
 - 表格里的哈希只核对公开样例；私有影像不做哈希核对，也不出现在表里。
+- 哈希要求**双边一致**：公开清单（`examples/recognition.samples.json`）与交接包 `image_index.json` 的登记值必须同时等于文件重算值。早期版本只要任一方匹配就报“哈希一致”，已在本周修复并补了两条回归测试。
