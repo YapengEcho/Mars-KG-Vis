@@ -50,6 +50,15 @@ describe('atlas pages render without the private catalogue', () => {
     expect(html).toContain('原始坐标说明待补')
     expect(html).toContain('ls_0493')
   })
+  it('states that a case without a public image has no image', async () => {
+    const html = await render('/atlas/case/case-ls-0591')
+    expect(html).toContain('暂无公开影像')
+    expect(html).not.toContain('<img')
+  })
+  it('marks the cases without a public image on the type page', async () => {
+    const html = await render('/atlas/type/SL')
+    expect(html.match(/暂无公开影像/g)?.length).toBe(1)
+  })
   it('rejects an unknown type politely', async () => {
     const html = await render('/atlas/type/XX')
     expect(html).toContain('未知的滑坡类别')

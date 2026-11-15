@@ -5,6 +5,7 @@ import { atlas } from '../stores/atlas'
 import { atlasContent, caseRecord, casesOfType, typeEntry } from '../lib/atlas'
 import { slideTypes, typeInfo } from '../types'
 import type { SlideType } from '../types'
+import { sampleById } from '../lib/samples'
 
 const props = defineProps<{ type: string }>()
 const type = computed(() => String(props.type ?? '').toUpperCase() as SlideType)
@@ -78,6 +79,7 @@ function openRecord(caseId: string) {
           <p>{{ item.observations[0] }}</p>
           <div class="tag-row">
             <span v-for="tag in item.tags" :key="tag" class="data-badge">{{ tag }}</span>
+            <span v-if="!sampleById(item.landslideId)" class="data-badge">暂无公开影像</span>
           </div>
           <div class="case-actions">
             <RouterLink class="secondary-button" :to="`/atlas/case/${item.id}`"
