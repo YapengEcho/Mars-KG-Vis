@@ -190,3 +190,36 @@ def test_rare_term_outranks_common_term():
     docs = guidebook_retriever().search("体积效应", limit=1)
     assert docs
     assert docs[0].doc_id == "doc-volume-effect"
+
+
+def test_guidebook_includes_atlas_cases():
+    """图鉴 12 例应全部进入索引，且每条都带目录关联与出处。"""
+    docs = load_docs(GUIDEBOOK)
+    cases = [doc for doc in docs if doc.doc_type == "case"]
+    assert len(cases) == 12
+    for doc in cases:
+        assert doc.slide_ids, f"{doc.doc_id} 缺少 slide_ids"
+        assert doc.source_url and doc.source_url.startswith("https://doi.org/")
+        assert "出处：" in doc.text, f"{doc.doc_id} 正文缺少定位"
+
+
+def test_guidebook_records_atlas_version():
+    """索引必须记录它由哪一版图鉴生成，便于三方核对同一版本。"""
+    import json
+
+    payload = json.loads(GUIDEBOOK.read_text(encoding="utf-8-sig"))
+    assert payload.get("atlasVersion")
+    assert payload.get("generatedBy") == "scripts/import_atlas_to_guidebook.py"
+
+
+def test_search_docs_finds_case_by_landslide_id():
+    result = execute_tool(
+        "search_docs",
+        {"q": "ls_0493", "doc_type": "case"},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    assert result.payload["results"][0]["doc_id"] == "doc-case-ls_0493"
+    assert result.citations[0].url.startswith("https://doi.org/")

@@ -85,7 +85,7 @@ TOOL_SPECS = [
         "type": "function",
         "function": {
             "name": "search_docs",
-            "description": "检索图鉴资料文本：类型说明、类型对比、空间分布、规模与流动性、成因诱发、研究方法与限制、研究简史。",
+            "description": "检索图鉴资料文本：类型说明、类型对比、图鉴案例、空间分布、规模与流动性、成因诱发、研究方法与限制、研究简史。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -95,13 +95,14 @@ TOOL_SPECS = [
                         "enum": [
                             "type_intro",
                             "compare",
+                            "case",
                             "distribution",
                             "mobility",
                             "method",
                             "history",
                             "overview",
                         ],
-                        "description": "资料类型：type_intro 类型说明 / compare 类型对比 / distribution 空间分布 / mobility 规模与流动性 / method 方法与限制 / history 研究简史 / overview 编目总览",
+                        "description": "资料类型：type_intro 类型说明 / compare 类型对比 / case 图鉴案例 / distribution 空间分布 / mobility 规模与流动性 / method 方法与限制 / history 研究简史 / overview 编目总览",
                     },
                     "limit": {"type": "integer", "description": "返回条数，默认5"},
                 },
