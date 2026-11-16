@@ -108,3 +108,7 @@ api/.pytest_cache/
 *.sqlite3-wal
 *.sqlite3-shm
 *.sqlite3-journal
+
+# Generated check tables stay local (CSV is a local/delivery artifact)
+docs/**/*.csv
+pytest-of-*/

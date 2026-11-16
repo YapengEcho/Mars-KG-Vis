@@ -1,4 +1,4 @@
-﻿"""Export the hand-curated atlas content as structured, searchable data.
+"""Export the hand-curated atlas content as structured, searchable data.
 
 The tracked source is ``mobile/src/content/atlas.json``: text, citation locators
 and record ids only (no coordinates, areas or images), so the public repository
@@ -7,8 +7,13 @@ week-3 deliverables — a joined case table, a citation register and one JSONL
 block per type/case/comparison for the Agent to retrieve — and, when a
 catalogue is supplied, joins coordinates, area and class from it.
 
+The optional ``--samples`` list (``examples/recognition.samples.json``) adds a
+public-image column and one line per case block, so the Agent can avoid offering
+an image that is not published.
+
 Usage:
     python scripts/export_atlas_content.py --out <dir> [--catalog mars_landslides.json]
+        [--samples examples/recognition.samples.json]
 """
 
 from __future__ import annotations
@@ -123,6 +128,14 @@ def check_content(content: dict[str, Any]) -> list[str]:
     return problems
 
 
+def load_samples(path: Path | None) -> dict[str, dict[str, Any]] | None:
+    if path is None:
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    records = payload.get("records", payload)
+    return {str(record["id"]): record for record in records}
+
+
 def load_catalog(path: Path) -> dict[str, dict[str, Any]]:
     records = json.loads(path.read_text(encoding="utf-8"))
     by_id: dict[str, dict[str, Any]] = {}
@@ -131,10 +144,18 @@ def load_catalog(path: Path) -> dict[str, dict[str, Any]]:
     return by_id
 
 
-def case_rows(content: dict[str, Any], catalog: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def case_rows(
+    content: dict[str, Any],
+    catalog: dict[str, dict[str, Any]],
+    samples: dict[str, dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for case in content["cases"]:
         record = catalog.get(case["landslideId"], {})
+        if samples is None:
+            public_image = "unknown"
+        else:
+            public_image = "yes" if case["landslideId"] in samples else "no"
         rows.append(
             {
                 "case_id": case["id"],
@@ -152,6 +173,7 @@ def case_rows(content: dict[str, Any], catalog: dict[str, dict[str, Any]]) -> li
                 "latitude": record.get("lat", ""),
                 "area_km2": record.get("area", ""),
                 "in_catalog": "yes" if record else "no",
+                "public_image": public_image,
             }
         )
     return rows
@@ -191,7 +213,9 @@ def citation_rows(content: dict[str, Any]) -> list[dict[str, str]]:
     return rows
 
 
-def search_blocks(content: dict[str, Any]) -> list[dict[str, str]]:
+def search_blocks(
+    content: dict[str, Any], samples: dict[str, dict[str, Any]] | None = None
+) -> list[dict[str, str]]:
     blocks: list[dict[str, str]] = []
     for entry in content["types"]:
         text = "\n".join(
@@ -219,6 +243,16 @@ def search_blocks(content: dict[str, Any]) -> list[dict[str, str]]:
                 f"引用：{case['citationLocator']}",
             ]
         )
+        if samples is not None:
+            sample = samples.get(case["landslideId"])
+            extra = (
+                f"公开影像：有（{sample['imageUrl'].split('/')[-1]}，224×224）"
+                if sample
+                else "公开影像：暂无（只有文字说明）"
+            )
+            lines = text.split("\n")
+            lines.insert(-1, extra)
+            text = "\n".join(lines)
         blocks.append({"id": case["id"], "kind": "case", "title": case["title"], "text": text})
     for item in content["comparisons"]:
         lines = [f"类型对比 {item['title']}", item["why"]]
@@ -237,14 +271,20 @@ def write_csv(path: Path, rows: list[dict[str, Any]], fields: list[str]) -> None
         writer.writerows(rows)
 
 
-def export(content_path: Path, out: Path, catalog_path: Path | None) -> dict[str, Any]:
+def export(
+    content_path: Path,
+    out: Path,
+    catalog_path: Path | None,
+    samples_path: Path | None = None,
+) -> dict[str, Any]:
     content = load_content(content_path)
     catalog = load_catalog(catalog_path) if catalog_path else {}
+    samples = load_samples(samples_path)
     out.mkdir(parents=True, exist_ok=True)
 
-    cases = case_rows(content, catalog)
+    cases = case_rows(content, catalog, samples)
     citations = citation_rows(content)
-    blocks = search_blocks(content)
+    blocks = search_blocks(content, samples)
     joined = {
         **content,
         "cases": [
@@ -274,6 +314,7 @@ def export(content_path: Path, out: Path, catalog_path: Path | None) -> dict[str
             "latitude",
             "area_km2",
             "in_catalog",
+            "public_image",
         ],
     )
     write_csv(out / "atlas-citations.csv", citations, ["owner_kind", "owner_id", "document_id", "locator"])
@@ -290,6 +331,7 @@ def export(content_path: Path, out: Path, catalog_path: Path | None) -> dict[str
         "types": len(content["types"]),
         "cases": len(content["cases"]),
         "casesInCatalog": sum(1 for row in cases if row["in_catalog"] == "yes"),
+        "casesWithPublicImage": sum(1 for row in cases if row["public_image"] == "yes"),
         "comparisons": len(content["comparisons"]),
         "limits": len(content["limits"]),
         "citations": len(citations),
@@ -309,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--content", type=Path, default=DEFAULT_CONTENT)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--catalog", type=Path, help="目录 JSON（按 landslideId 关联坐标、面积与类别）")
+    parser.add_argument("--samples", type=Path, help="公开裁片清单（examples/recognition.samples.json）")
     parser.add_argument("--check", action="store_true", help="只校验内容文件，不写文件")
     args = parser.parse_args(argv)
 
@@ -319,10 +362,10 @@ def main(argv: list[str] | None = None) -> int:
         print("图鉴内容校验通过" if not problems else f"图鉴内容 {len(problems)} 个问题")
         return 0 if not problems else 1
 
-    summary = export(args.content, args.out, args.catalog)
+    summary = export(args.content, args.out, args.catalog, args.samples)
     print(
-        "图鉴导出：{cases} 条案例（目录中 {casesInCatalog} 条），{types} 类，{comparisons} 组对比，"
-        "{citations} 条引用，{searchBlocks} 个检索片段 → {out}".format(out=args.out, **summary)
+        "图鉴导出：{cases} 条案例（目录中 {casesInCatalog} 条，公开影像 {casesWithPublicImage} 条），"
+        "{types} 类，{comparisons} 组对比，{citations} 条引用，{searchBlocks} 个检索片段 → {out}".format(out=args.out, **summary)
     )
     return 0
 
