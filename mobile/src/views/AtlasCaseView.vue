@@ -59,6 +59,9 @@ function locate() {
       <div v-if="sample" class="sample-media">
         <ZoomableImage :src="sample.imageUrl" :alt="item.title" />
       </div>
+      <p v-else class="notice">
+        暂无公开影像：仓库不收录影像资源，本案例以文字说明与目录记录为准。
+      </p>
       <RouterLink v-if="sample" class="text-button" :to="`/samples/${sample.id}`"
         >查看影像 →</RouterLink
       >
