@@ -17,6 +17,7 @@ const elapsed = ref(0)
 const stopped = ref(false)
 let controller: AbortController | undefined
 let ticker: ReturnType<typeof setInterval> | undefined
+let runId = 0
 function stopTicker() {
   if (ticker) clearInterval(ticker)
   ticker = undefined
@@ -29,6 +30,7 @@ function stop() {
 }
 function halt() {
   stopped.value = true
+  stopTicker()
   controller?.abort()
 }
 function delay(signal: AbortSignal) {
@@ -45,6 +47,7 @@ function delay(signal: AbortSignal) {
 watch(
   () => [props.taskId, retry.value],
   async () => {
+    const run = ++runId
     stop()
     task.value = null
     error.value = ''
@@ -83,7 +86,7 @@ watch(
     } catch (e) {
       if (!signal.aborted) error.value = e instanceof Error ? e.message : '暂时无法读取结果。'
     } finally {
-      stopTicker()
+      if (run === runId) stopTicker()
     }
   },
   { immediate: true },

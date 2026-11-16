@@ -19,6 +19,8 @@ const busy = ref(false)
 const choosing = ref(false)
 const isSample = ref(false)
 const sampleRoi = ref<number[] | undefined>()
+const MAX_IMAGE_PIXELS = 4096 * 4096
+const MAX_IMAGE_SIDE = 8192
 let selection = 0
 let active = true
 const taskId = computed(() => (typeof route.query.task === 'string' ? route.query.task : ''))
@@ -63,10 +65,12 @@ function choose(selected: File) {
   const image = new Image()
   image.onload = () => {
     if (file.value !== selected) return
-    dimensions.value = { width: image.naturalWidth, height: image.naturalHeight }
-    if (image.naturalWidth > 4096 || image.naturalHeight > 4096) {
+    const width = image.naturalWidth
+    const height = image.naturalHeight
+    dimensions.value = { width, height }
+    if (width * height > MAX_IMAGE_PIXELS || Math.max(width, height) > MAX_IMAGE_SIDE) {
       imageValid.value = false
-      message.value = `图片为 ${image.naturalWidth}×${image.naturalHeight}，超过 4096×4096 上限，请先裁出单个滑坡。`
+      message.value = `图片为 ${width}×${height}，超过单图限制：总像素不超过 4096×4096，最长边不超过 8192 像素。`
     }
   }
   image.onerror = () => {
@@ -163,7 +167,7 @@ onBeforeUnmount(() => {
               ><ImagePlus :size="34" :stroke-width="1.4" /><strong>{{
                 choosing ? '正在加载影像…' : '选择滑坡影像'
               }}</strong
-              ><span>PNG / JPEG，最大 8 MB，不超过 4096×4096</span></template
+              ><span>PNG / JPEG，最大 8 MB；总像素不超过 4096×4096，最长边不超过 8192</span></template
             >
             <input
               type="file"
