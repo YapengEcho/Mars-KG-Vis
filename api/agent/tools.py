@@ -151,6 +151,7 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
                 "total": len(matched),
                 "records": [_brief(record) for record in page],
                 "dataMode": catalog.mode,
+                "coordinateSystem": catalog.coordinateSystem.model_dump(),
                 "version": catalog.version,
             },
             records=page,
@@ -164,7 +165,7 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
                     name=name,
                     args=args,
                     ok=True,
-                    payload=_brief(record),
+                    payload={**_brief(record), "dataMode": catalog.mode, "coordinateSystem": catalog.coordinateSystem.model_dump()},
                     records=[record],
                     citations=[_source_citation(record)],
                 )
@@ -227,7 +228,7 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
                 name=name,
                 args=args,
                 ok=True,
-                payload={"located": slide_id},
+                payload={"located": slide_id, "dataMode": catalog.mode, "coordinateSystem": catalog.coordinateSystem.model_dump()},
                 actions=[AgentAction(type="locate", slideId=slide_id)],
             )
         return _error(name, args, f"未找到编号为 {slide_id} 的记录，无法定位。")

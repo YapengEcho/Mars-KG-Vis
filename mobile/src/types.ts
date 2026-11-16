@@ -15,7 +15,7 @@ export interface Slide {
 }
 export interface Catalog {
   version: string
-  mode: 'demo' | 'catalog'
+  mode: 'demo' | 'catalog' | 'reference'
   coordinateSystem: { body: 'Mars'; longitude: string; latitude: string }
   records: Slide[]
 }

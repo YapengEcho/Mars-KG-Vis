@@ -1,0 +1,165 @@
+{
+  "version": "public-samples-20261110",
+  "records": [
+    {
+      "id": "ls_0493",
+      "sourceId": 493,
+      "type": "SL",
+      "imageUrl": "/samples/ls_0493.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        37.34006826628002,
+        79.92218832250312,
+        186.66228123867984,
+        144.11061354346367
+      ],
+      "sha256": "918cba78b469909a6ed9c5cd2639d0675540721beb1c9ab48e5f954efa34dfb2",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0529",
+      "sourceId": 529,
+      "type": "SL",
+      "imageUrl": "/samples/ls_0529.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        73.28291891801952,
+        37.34111520789425,
+        150.84243990997354,
+        186.60360343554856
+      ],
+      "sha256": "54af8497e957bb2b6fd901a57461fa2114880ac610b74c86d4e615f4e21eefd5",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0483",
+      "sourceId": 483,
+      "type": "SP",
+      "imageUrl": "/samples/ls_0483.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        47.900426875186064,
+        37.38537109019692,
+        176.20226743130735,
+        186.6635855306494
+      ],
+      "sha256": "4c4d687bdb1dfb4a81eba80d8d195cae8c8c0fb09bcea6fc7e4c287df4fa2630",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0533",
+      "sourceId": 533,
+      "type": "SP",
+      "imageUrl": "/samples/ls_0533.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        39.16974246404254,
+        37.36589349727882,
+        184.92887001040572,
+        186.63312784699968
+      ],
+      "sha256": "9b7fd8baeede446c8ca22a1143979aae0c2fea7150195487fc2df51bce6daccb",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0505",
+      "sourceId": 505,
+      "type": "FL",
+      "imageUrl": "/samples/ls_0505.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        63.768664004839295,
+        37.38169878365815,
+        160.25064382146624,
+        186.60513248933825
+      ],
+      "sha256": "8105fa1255d6dc62debfa25d64591f852fb19b11706ae4775d82f43584b35870",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0597",
+      "sourceId": 597,
+      "type": "FL",
+      "imageUrl": "/samples/ls_0597.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        59.98119376292622,
+        37.42621364448132,
+        164.3656162604997,
+        186.68439929618896
+      ],
+      "sha256": "b9f857507d423fc867d27790077112035c6ee5f5936f9b740c285f6a9e11283f",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0482",
+      "sourceId": 482,
+      "type": "CL",
+      "imageUrl": "/samples/ls_0482.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        59.6332053688543,
+        37.32956368236028,
+        158.86578235002975,
+        186.5861429946124
+      ],
+      "sha256": "3beb028bfd8be3c323527fb1f95eb3f2e0b7dec7814a305e28de216a87cd4065",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    },
+    {
+      "id": "ls_0528",
+      "sourceId": 528,
+      "type": "CL",
+      "imageUrl": "/samples/ls_0528.png",
+      "width": 224,
+      "height": 224,
+      "roi": [
+        38.73775540078689,
+        37.35596520768414,
+        185.31169887884585,
+        186.65959773659205
+      ],
+      "sha256": "86b5be259fcb5c8c81ae06f6533de68f7c2b4088188280a64d37c056fc0e2802",
+      "usage": "training_example_not_evaluation",
+      "source": {
+        "title": "火星全球滑坡编目及分类初探（编目资料参考）",
+        "url": "https://doi.org/10.13203/j.whugis20250300"
+      }
+    }
+  ]
+}

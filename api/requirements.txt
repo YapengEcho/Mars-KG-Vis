@@ -4,3 +4,4 @@ uvicorn>=0.30,<0.35
 Pillow>=10.4,<13
 openai>=1.50,<2
 pyshp>=2.3,<3
+python-multipart>=0.0.18,<0.1

@@ -1,5 +1,7 @@
 """Guard the tracked publication boundary; no private data content is printed."""
 import json
+import hashlib
+import struct
 from pathlib import Path
 import subprocess
 
@@ -37,6 +39,39 @@ def real_source_ids(value):
     return found
 
 
+def check_images(tracked):
+    """Allow only the eight selected, metadata-free 224px training previews."""
+    manifest=json.loads((ROOT/'examples/recognition.samples.json').read_text(encoding='utf-8'))
+    rows=manifest['records']
+    assert len(rows)==8 and {r['sourceId'] for r in rows}==PUBLIC_SOURCE_IDS
+    metadata={r['sourceId']:r for r in json.loads((ROOT/'examples/catalog.real-subset.json').read_text(encoding='utf-8'))['records']}
+    allowed=set()
+    for r in rows:
+        assert set(r)=={'id','sourceId','type','imageUrl','width','height','roi','sha256','usage','source'}
+        assert r['id']==metadata[r['sourceId']]['id'] and r['type']==metadata[r['sourceId']]['type']
+        assert r['source']==metadata[r['sourceId']]['source']
+        assert r['usage']=='training_example_not_evaluation'
+        assert r['width']==r['height']==224 and r['imageUrl']=='/samples/'+r['id']+'.png'
+        roi=r['roi'];assert len(roi)==4 and all(isinstance(v,(int,float)) for v in roi)
+        assert 0<=roi[0]<roi[2]<=224 and 0<=roi[1]<roi[3]<=224
+        relative='mobile/public'+r['imageUrl'];allowed.add(relative)
+        raw=(ROOT/relative).read_bytes()
+        assert len(raw)<100000 and hashlib.sha256(raw).hexdigest()==r['sha256']
+        assert raw[:8]==b'\x89PNG\r\n\x1a\n'
+        offset=8;chunks=[]
+        while offset<len(raw):
+            size=struct.unpack('>I',raw[offset:offset+4])[0]
+            kind=raw[offset+4:offset+8];chunks.append(kind)
+            if kind==b'IHDR':assert struct.unpack('>II',raw[offset+8:offset+16])==(224,224)
+            offset+=size+12
+        assert offset==len(raw) and chunks[0]==b'IHDR' and chunks[-1]==b'IEND'
+        assert set(chunks)<={b'IHDR',b'IDAT',b'IEND'},'Unexpected image metadata'
+    published={p for p in tracked if p.startswith('mobile/public/samples/')}
+    assert published==allowed,'Unapproved or missing sample images'
+    images={p for p in tracked if Path(p).suffix.lower() in {'.png','.jpg','.jpeg','.webp','.gif','.bmp'}}
+    assert images==allowed|{'mobile/public/textures/mars.jpg'},'Unexpected image outside the approved release set'
+
+
 def main():
     result=subprocess.run(['git','ls-files','-z'],cwd=ROOT,check=True,capture_output=True)
     tracked=[p for p in result.stdout.decode('utf-8').split('\0') if p]
@@ -56,9 +91,10 @@ def main():
             assert real_source_ids(json.loads(path.read_text(encoding='utf-8'))) <= PUBLIC_SOURCE_IDS, 'Real records outside the approved subset: '+relative
     if blocked:raise SystemExit('Private/local assets are tracked: '+', '.join(blocked))
     check_subset(ROOT/'examples/catalog.real-subset.json')
+    check_images(tracked)
     demo=json.loads((ROOT/'examples/catalog.demo.json').read_text(encoding='utf-8'))
     assert demo['mode']=='demo' and all(r['isDemo'] is True for r in demo['records'])
-    print(f'Publication boundary passed: {len(tracked)} tracked files;8 real metadata samples; no full data/model assets')
+    print(f'Publication boundary passed: {len(tracked)} tracked files;8 metadata samples and8 approved 224px previews; no full data/model assets')
 
 
 if __name__=='__main__':main()

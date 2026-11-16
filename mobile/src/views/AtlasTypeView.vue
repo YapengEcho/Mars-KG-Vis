@@ -63,7 +63,9 @@ function openRecord(caseId: string) {
       </dl>
 
       <div class="section-heading">
-        <h2>{{ entry.name }}案例 <span>{{ cases.length }}</span></h2>
+        <h2>
+          {{ entry.name }}案例 <span>{{ cases.length }}</span>
+        </h2>
         <RouterLink to="/atlas/compare">两类对比</RouterLink>
       </div>
       <div class="case-grid">
@@ -82,7 +84,7 @@ function openRecord(caseId: string) {
               >案例页 <ArrowRight :size="15"
             /></RouterLink>
             <button class="text-button" :disabled="!recordOf(item.id)" @click="openRecord(item.id)">
-              {{ recordOf(item.id) ? '查看目录记录' : '示例目录中无此记录' }}
+              {{ recordOf(item.id) ? '查看目录记录' : '该记录尚未开放' }}
             </button>
           </div>
         </article>

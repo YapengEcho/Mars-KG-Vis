@@ -1,4 +1,4 @@
-"""Reusable input gate for inference integration; current public route remains unconfigured."""
+"""Decode and bound still images before recognition preprocessing."""
 from io import BytesIO
 import warnings
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -6,8 +6,6 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 MAX_UPLOAD_BYTES=8*1024*1024
 MAX_IMAGE_PIXELS=4096*4096
 MAX_IMAGE_SIDE=8192
-CLIENT_TIMEOUT_SECONDS=60
-PROPOSED_WORKER_TIMEOUT_SECONDS=30
 
 
 class ImageInputError(ValueError):
