@@ -1,8 +1,11 @@
 """Tool schemas and execution for the Mars landslide assistant."""
+import re
 from dataclasses import dataclass, field
 from api.schemas import Catalog, Slide
 from api.catalog_query import filter_records, parse_bbox
 from api.agent.schemas import AgentAction, Citation
+# Standalone SL/SP/FL/CL only: "ls_0493" must not match (no word boundary after s).
+_TYPE_CODE = re.compile(r"\b(SL|SP|FL|CL)\b", re.IGNORECASE)
 @dataclass
 class ToolResult:
     name: str
@@ -188,7 +191,14 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
     if name == "search_docs":
         query = str(args.get("q", ""))
         limit = int(args.get("limit", 5) or 5)
-        docs = retriever.search(query, doc_type=args.get("doc_type"), limit=limit)
+        docs = retriever.search(query, doc_type=args.get("doc_type"), limit=max(limit * 4, 20))
+        # 问题里只点名了一个类型码时，只保留该类型的案例，否则问“有哪些 SL 案例”
+        # 会把 SP/FL/CL 的案例一起带出来（它们的标题都含“案例”）。
+        codes = _TYPE_CODE.findall(query.upper())
+        wanted = codes[0] if len(set(codes)) == 1 else None
+        if wanted:
+            docs = [doc for doc in docs if doc.doc_type != "case" or doc.case_type == wanted]
+        docs = docs[:limit]
         if not docs:
             return ToolResult(
                 name=name,

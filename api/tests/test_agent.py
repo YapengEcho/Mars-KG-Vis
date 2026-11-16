@@ -223,3 +223,76 @@ def test_search_docs_finds_case_by_landslide_id():
     assert result.payload["results"]
     assert result.payload["results"][0]["doc_id"] == "doc-case-ls_0493"
     assert result.citations[0].url.startswith("https://doi.org/")
+
+
+def test_sl_case_query_returns_only_sl_cases():
+    """问“有哪些 SL 案例”时，不能让 SP/FL/CL 的案例混进来。"""
+    result = execute_tool(
+        "search_docs",
+        {"q": "有哪些 SL 案例", "doc_type": "case", "limit": 6},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    for item in result.payload["results"]:
+        assert item["doc_type"] == "case"
+        assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
+
+
+def test_case_docs_record_public_image_status():
+    """每条案例都要写明公开影像状态，并与 samples 清单一致。"""
+    import json
+
+    samples_path = Path(__file__).resolve().parents[2] / "examples" / "recognition.samples.json"
+    samples = json.loads(samples_path.read_text(encoding="utf-8-sig"))
+    with_image = {record["id"] for record in samples.get("records", [])}
+
+    cases = [doc for doc in load_docs(GUIDEBOOK) if doc.doc_type == "case"]
+    assert len(cases) == 12
+    for doc in cases:
+        slide_id = doc.slide_ids[0]
+        has_image = "公开影像：有" in doc.text
+        assert has_image == (slide_id in with_image), f"{doc.doc_id} 影像状态与清单不符"
+        assert ("目录关联：已在公开子集" in doc.text) or ("目录关联：仅在完整目录" in doc.text)
+
+
+def _load_converter():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "import_atlas_to_guidebook.py"
+    spec = importlib.util.spec_from_file_location("import_atlas_to_guidebook", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_rebuild_drops_cases_removed_from_atlas(tmp_path):
+    """图鉴里删掉的案例，重建索引后必须消失，也不能再被检索到。"""
+    import json
+
+    module = _load_converter()
+    atlas = json.loads(module.ATLAS_PATH.read_text(encoding="utf-8-sig"))
+    index = json.loads(module.INDEX_PATH.read_text(encoding="utf-8-sig"))
+    public_images, public_catalog = module.load_public_assets()
+
+    before = module.build(atlas, index["docs"], public_images, public_catalog)
+    target = next(doc for doc in before if doc["doc_type"] == "case")["doc_id"]
+    slide_id = target.replace("doc-case-", "")
+
+    trimmed = dict(atlas)
+    trimmed["cases"] = [
+        case for case in atlas["cases"] if f"doc-case-{case['landslideId']}" != target
+    ]
+    after = module.build(trimmed, before, public_images, public_catalog)
+
+    assert target not in {doc["doc_id"] for doc in after}
+
+    rebuilt = tmp_path / "index.json"
+    rebuilt.write_text(
+        json.dumps({"atlasVersion": trimmed.get("version"), "docs": after}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    retriever = KeywordRetriever(load_docs(rebuilt))
+    hits = retriever.search(slide_id, doc_type="case", limit=12)
+    assert all(doc.doc_id != target for doc in hits)

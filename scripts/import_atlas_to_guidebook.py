@@ -30,6 +30,24 @@ INDEX_PATH = REPO_ROOT / "api" / "data" / "docs" / "guidebook.demo.json"
 TYPE_DOC_IDS = {"SL": "doc-sl", "SP": "doc-sp", "FL": "doc-fl", "CL": "doc-cl"}
 COMPARISON_DOC_IDS = {"sl-vs-sp": "doc-compare-sl-sp", "sp-vs-cl": "doc-compare-sp-cl"}
 LIMITS_DOC_ID = "doc-limit"
+TYPE_NAMES = {"SL": "滑移型", "SP": "滑塌型", "FL": "流动型", "CL": "复合型"}
+SAMPLES_PATH = REPO_ROOT / "examples" / "recognition.samples.json"
+CATALOG_SUBSET_PATH = REPO_ROOT / "examples" / "catalog.real-subset.json"
+
+
+def load_public_assets() -> tuple[set[str], set[str]]:
+    """Return (ids with a public 224px crop, ids present in the public catalog).
+
+    Both facts are read from the machine-readable sources rather than the
+    generated markdown table, so the index cannot drift from the checked data.
+    """
+    def _ids(path: Path) -> set[str]:
+        if not path.exists():
+            return set()
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        return {record.get("id") for record in payload.get("records", []) if record.get("id")}
+
+    return _ids(SAMPLES_PATH), _ids(CATALOG_SUBSET_PATH)
 
 
 def _locators(citations: list[dict]) -> str:
@@ -105,10 +123,35 @@ def comparison_doc(item: dict, document: dict) -> dict:
     }
 
 
-def case_doc(item: dict, document: dict) -> dict:
+def case_title(item: dict, slide_id: str) -> str:
+    """Prefix the type code so "有哪些 SL 案例" can rank SL cases above the rest.
+
+    v3 atlas titles already end with "· ls_0493"; older ones do not, so the id is
+    appended only when missing.
+    """
+    raw = (item.get("title") or "").strip()
+    type_code = (item.get("type") or "").strip()
+    title = f"案例：{type_code} {raw}".strip() if type_code else f"案例：{raw}".strip()
+    if slide_id and slide_id not in title:
+        title = f"{title} · {slide_id}"
+    return title
+
+
+def case_doc(item: dict, document: dict, public_images: set[str], public_catalog: set[str]) -> dict:
+    slide_id = (item.get("landslideId") or "").strip()
+    type_code = (item.get("type") or "").strip()
+    type_name = TYPE_NAMES.get(type_code, "")
+    has_image = slide_id in public_images
+    in_catalog = slide_id in public_catalog
+
     lines = []
     if item.get("subtitle"):
         lines.append(item["subtitle"])
+    lines.append(f"类型：{type_code} {type_name}".strip())
+    if slide_id:
+        lines.append(f"编号：{slide_id}")
+    lines.append("公开影像：有（公开 224×224 裁片）" if has_image else "公开影像：暂无公开影像")
+    lines.append("目录关联：已在公开子集" if in_catalog else "目录关联：仅在完整目录")
     meta = []
     for label, key in (("区域", "region"), ("CTX 图幅", "tile"), ("预览尺度", "previewScale")):
         if item.get(key):
@@ -124,13 +167,13 @@ def case_doc(item: dict, document: dict) -> dict:
     locator = (item.get("citationLocator") or "").strip()
     if locator:
         lines += ["", f"出处：{locator}"]
-    slide_id = (item.get("landslideId") or "").strip()
     return {
         "doc_id": f"doc-case-{slide_id}" if slide_id else f"doc-{item.get('id', '')}",
         "doc_type": "case",
-        "title": f"案例：{item.get('title', '')}（{item.get('type', '')}，{slide_id}）",
+        "title": case_title(item, slide_id),
         "text": "\n".join(lines).strip(),
         "slide_ids": [slide_id] if slide_id else [],
+        "caseType": type_code or None,
         "source_title": _source_title(document, locator),
         "source_url": _source_url(document),
     }
@@ -150,9 +193,28 @@ def limits_doc(limits: list[str], document: dict, existing: dict | None) -> dict
     }
 
 
-def build(atlas: dict, existing_docs: list[dict]) -> list[dict]:
+def build(
+    atlas: dict,
+    existing_docs: list[dict],
+    public_images: set[str] | None = None,
+    public_catalog: set[str] | None = None,
+) -> list[dict]:
     document = atlas.get("sourceDocument", {})
-    by_id = {doc.get("doc_id"): doc for doc in existing_docs}
+    public_images = public_images or set()
+    public_catalog = public_catalog or set()
+
+    atlas_case_ids = {
+        f"doc-case-{(item.get('landslideId') or '').strip()}"
+        for item in atlas.get("cases", [])
+        if (item.get("landslideId") or "").strip()
+    }
+    # Cases are fully owned by the atlas: rebuild must drop any case doc whose
+    # record was removed from the atlas, otherwise stale cases stay searchable.
+    by_id = {
+        doc.get("doc_id"): doc
+        for doc in existing_docs
+        if not (doc.get("doc_type") == "case" and doc.get("doc_id") not in atlas_case_ids)
+    }
 
     for item in atlas.get("types", []):
         doc = type_doc(item, document)
@@ -161,7 +223,7 @@ def build(atlas: dict, existing_docs: list[dict]) -> list[dict]:
         doc = comparison_doc(item, document)
         by_id[doc["doc_id"]] = doc
     for item in atlas.get("cases", []):
-        doc = case_doc(item, document)
+        doc = case_doc(item, document, public_images, public_catalog)
         by_id[doc["doc_id"]] = doc
     if atlas.get("limits"):
         doc = limits_doc(atlas["limits"], document, by_id.get(LIMITS_DOC_ID))
@@ -190,22 +252,32 @@ def main() -> int:
     atlas = json.loads(ATLAS_PATH.read_text(encoding="utf-8-sig"))
     index = json.loads(INDEX_PATH.read_text(encoding="utf-8-sig"))
     existing_docs = index.get("docs", [])
+    public_images, public_catalog = load_public_assets()
 
-    docs = build(atlas, existing_docs)
+    docs = build(atlas, existing_docs, public_images, public_catalog)
     counts: dict[str, int] = {}
     for doc in docs:
         counts[doc["doc_type"]] = counts.get(doc["doc_type"], 0) + 1
+
+    existing_ids = {x.get("doc_id") for x in existing_docs}
+    new_ids = {d["doc_id"] for d in docs}
+    added = sorted(new_ids - existing_ids)
+    removed = sorted(existing_ids - new_ids)
+    case_docs = [d for d in docs if d["doc_type"] == "case"]
+    with_image = sum(1 for d in case_docs if d["slide_ids"] and d["slide_ids"][0] in public_images)
 
     print(f"atlas version   : {atlas.get('version')}")
     print(f"atlas entries   : types={len(atlas.get('types', []))} "
           f"comparisons={len(atlas.get('comparisons', []))} "
           f"cases={len(atlas.get('cases', []))} limits={len(atlas.get('limits', []))}")
+    print(f"public images   : {len(public_images)} records in recognition.samples.json")
+    print(f"public catalog  : {len(public_catalog)} records in catalog.real-subset.json")
     print(f"index before    : {len(existing_docs)} docs")
     print(f"index after     : {len(docs)} docs")
     print("doc_type counts : " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
-
-    added = [d["doc_id"] for d in docs if d["doc_id"] not in {x.get("doc_id") for x in existing_docs}]
+    print(f"cases with image: {with_image}/{len(case_docs)}")
     print(f"added           : {len(added)} -> {added}")
+    print(f"removed         : {len(removed)} -> {removed}")
 
     if args.check:
         return 0
