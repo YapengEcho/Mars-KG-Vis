@@ -103,6 +103,15 @@ class ClassifierCapability(Capability):
     historyAvailable: bool = False
 
 
+class DetectionCapability(Capability):
+    modelVersion: str | None = None
+    preprocessingVersion: str | None = None
+    maxImageSide: int
+    maxImagePixels: int
+    maxUploadBytes: int
+    maxCandidates: int
+
+
 class AgentCapability(StrictModel):
     available: bool
     model: str
@@ -111,7 +120,7 @@ class Capabilities(StrictModel):
     dataMode: DataMode
     version: str
     classifier: ClassifierCapability
-    detection: Capability
+    detection: DetectionCapability
     agent: AgentCapability
 
 

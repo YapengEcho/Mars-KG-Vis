@@ -5,11 +5,12 @@ from typing import Literal
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile
 from starlette.responses import JSONResponse
 
 from api.classifier import prepare_image
+from api.detector import MAX_DETECTION_PIXELS, MAX_DETECTION_SIDE, prepare_detection
 from api.image_policy import MAX_UPLOAD_BYTES, ImageInputError, decode_image
 from api.recognition_store import QueueFull
 
@@ -56,8 +57,42 @@ class Task(BaseModel):
     imageUrl: str
 
 
+class DetectionInput(BaseModel):
+    width: int
+    height: int
+    preprocessingVersion: str
+
+
+class Candidate(BaseModel):
+    candidateId: str
+    box: tuple[int, int, int, int]
+    detectionScore: float = Field(ge=0, le=1)
+    classification: Result
+
+
+class DetectionResult(BaseModel):
+    outcome: Literal['detections', 'no_detections']
+    coordinateSpace: Literal['image_pixels']
+    truncated: bool
+    candidates: list[Candidate]
+
+
+class DetectionTask(BaseModel):
+    taskId: str
+    kind: Literal['detect']
+    status: Literal['queued', 'running', 'completed', 'failed']
+    createdAt: str
+    finishedAt: str | None
+    modelVersion: str
+    preprocessingVersion: str
+    input: DetectionInput
+    result: DetectionResult | None
+    errorCode: str | None
+    imageUrl: str
+
+
 class TaskPage(BaseModel):
-    items: list[Task]
+    items: list[Task | DetectionTask]
     total: int
     page: int
     pageSize: int
@@ -141,12 +176,52 @@ async def classify(request: Request, credential: HTTPAuthorizationCredentials | 
     return JSONResponse(task, status_code=202, headers={'Location': f'/api/recognition/tasks/{task_id}'})
 
 
+@router.post('/api/landslide/detect', response_model=DetectionTask, status_code=202, openapi_extra={
+    'requestBody': {'required': True, 'content': {'multipart/form-data': {'schema': {
+        'type': 'object', 'required': ['file'], 'properties': {
+            'file': {'type': 'string', 'format': 'binary'}
+        }}}}}})
+async def detect(request: Request, identity=Depends(owner)):
+    worker = get_worker(request)
+    if worker.detector is None or worker.model is None:
+        fail('DETECTION_NOT_CONFIGURED', 503, 'Detection requires both a detector and a classifier.')
+    if not worker.detection_available:
+        fail('WORKER_UNAVAILABLE', 503, 'Recognition worker is unavailable.')
+    async with request.form(max_files=1, max_fields=1) as form:
+        if set(form) != {'file'}:
+            if not form:
+                fail('IMAGE_REQUIRED', 422, 'Provide one image in the file field.')
+            fail('INVALID_FORM', 422, 'Only the file field is accepted.')
+        upload = form.get('file')
+        if not isinstance(upload, UploadFile):
+            fail('IMAGE_REQUIRED', 422, 'Provide one image in the file field.')
+        payload = await upload.read(MAX_UPLOAD_BYTES + 1)
+
+    def prepare():
+        image = decode_image(payload, max_side=MAX_DETECTION_SIDE, max_pixels=MAX_DETECTION_PIXELS)
+        return prepare_detection(image)
+
+    try:
+        prepared = await anyio.to_thread.run_sync(prepare)
+    except ImageInputError as error:
+        fail(error.code, error.status, str(error))
+    try:
+        task_id = await anyio.to_thread.run_sync(worker.store.enqueue_detection, identity, prepared, worker.detector.version)
+    except QueueFull:
+        raise HTTPException(429, detail={'code': 'QUEUE_FULL', 'message': 'Try again after pending tasks finish.'},
+                            headers={'Retry-After': '5'})
+    worker.wake.set()
+    return JSONResponse(await anyio.to_thread.run_sync(worker.store.get, identity, task_id), status_code=202,
+                        headers={'Location': f'/api/recognition/tasks/{task_id}'})
+
+
 @router.get('/api/recognition/tasks', response_model=TaskPage)
-def tasks(request: Request, identity=Depends(owner), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
-    return get_worker(request).store.list(identity, page, pageSize)
+def tasks(request: Request, identity=Depends(owner), page: int = Query(1, ge=1),
+          pageSize: int = Query(20, ge=1, le=100), kind: Literal['classify', 'detect'] = 'classify'):
+    return get_worker(request).store.list(identity, page, pageSize, kind)
 
 
-@router.get('/api/recognition/tasks/{task_id}', response_model=Task)
+@router.get('/api/recognition/tasks/{task_id}', response_model=Task | DetectionTask)
 def task(task_id: str, request: Request, identity=Depends(owner)):
     found = get_worker(request).store.get(identity, task_id)
     if found is None:
@@ -182,7 +257,8 @@ class RecognitionBoundary:
 
     async def __call__(self, scope, receive, send):
         path = scope.get('path', '')
-        recognition = path == '/api/landslide/classify' or path.startswith('/api/recognition/')
+        upload = path in ('/api/landslide/classify', '/api/landslide/detect')
+        recognition = upload or path.startswith('/api/recognition/')
         if scope['type'] != 'http' or not recognition:
             return await self.app(scope, receive, send)
 
@@ -192,7 +268,7 @@ class RecognitionBoundary:
                 message = {**message, 'headers': headers + [(b'cache-control', b'no-store')]}
             await send(message)
 
-        if path == '/api/landslide/classify' and scope['method'] == 'POST':
+        if upload and scope['method'] == 'POST':
             body = bytearray()
             while True:
                 message = await receive()

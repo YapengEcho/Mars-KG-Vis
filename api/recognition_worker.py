@@ -6,6 +6,7 @@ from pathlib import Path
 import threading
 
 from api.classifier import PreparedImage, classification_result
+from api.detector import detect_and_classify
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,9 @@ class WorkerLock:
 
 
 class RecognitionWorker:
-    def __init__(self, store, model):
+    def __init__(self, store, model, detector=None):
         self.store, self.model = store, model
+        self.detector = detector
         self.lock = WorkerLock(store.path)
         self.stop = threading.Event()
         self.wake = threading.Event()
@@ -51,6 +53,10 @@ class RecognitionWorker:
     @property
     def available(self):
         return self.model is not None and self.thread is not None and self.thread.is_alive() and not self.stop.is_set()
+
+    @property
+    def detection_available(self):
+        return self.detector is not None and self.available
 
     def start(self):
         self.lock.acquire()
@@ -72,9 +78,12 @@ class RecognitionWorker:
                     self.wake.clear()
                     continue
                 try:
-                    prepared = PreparedImage(bytes(row['pixels']), json.loads(row['weights_json']),
-                                             json.loads(row['input_json']), bytes(row['preview']))
-                    result = classification_result(self.model.predict(prepared), self.model)
+                    if row['kind'] == 'detect':
+                        result = detect_and_classify(bytes(row['pixels']), self.detector, self.model)
+                    else:
+                        prepared = PreparedImage(bytes(row['pixels']), json.loads(row['weights_json']),
+                                                 json.loads(row['input_json']), bytes(row['preview']))
+                        result = classification_result(self.model.predict(prepared), self.model)
                 except Exception:
                     # Do not send exception text, filesystem paths or submitted image data to clients.
                     logger.warning('Classification failed for task %s', row['id'])
