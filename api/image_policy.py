@@ -13,7 +13,7 @@ class ImageInputError(ValueError):
         super().__init__(message);self.code=code;self.status=status
 
 
-def decode_image(payload:bytes):
+def decode_image(payload: bytes, *, max_side=MAX_IMAGE_SIDE, max_pixels=MAX_IMAGE_PIXELS):
     if not payload:raise ImageInputError('EMPTY_IMAGE',422,'Image is empty')
     if len(payload)>MAX_UPLOAD_BYTES:raise ImageInputError('UPLOAD_TOO_LARGE',413,'Upload exceeds8MiB')
     try:
@@ -22,7 +22,7 @@ def decode_image(payload:bytes):
             with Image.open(BytesIO(payload)) as image:
                 if image.format not in ('PNG','JPEG'):raise ImageInputError('UNSUPPORTED_IMAGE',415,'Use PNG or JPEG')
                 w,h=image.size
-                if w*h>MAX_IMAGE_PIXELS or max(w,h)>MAX_IMAGE_SIDE:
+                if w*h>max_pixels or max(w,h)>max_side:
                     raise ImageInputError('IMAGE_DIMENSIONS_EXCEEDED',413,'Image dimensions exceed configured limit')
                 if getattr(image,'n_frames',1)!=1:raise ImageInputError('ANIMATED_IMAGE',415,'Use a single still image')
                 return ImageOps.exif_transpose(image).convert('RGB')

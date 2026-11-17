@@ -450,6 +450,51 @@
         ]
       }
     },
+    "/api/landslide/detect": {
+      "post": {
+        "tags": [
+          "recognition"
+        ],
+        "summary": "Detect",
+        "operationId": "detect_api_landslide_detect_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "file"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectionTask"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/recognition/tasks": {
       "get": {
         "tags": [
@@ -484,6 +529,20 @@
               "minimum": 1,
               "default": 20,
               "title": "Pagesize"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "classify",
+                "detect"
+              ],
+              "type": "string",
+              "default": "classify",
+              "title": "Kind"
             }
           }
         ],
@@ -540,7 +599,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Task"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Task"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DetectionTask"
+                    }
+                  ],
+                  "title": "Response Task Api Recognition Tasks  Task Id  Get"
                 }
               }
             }
@@ -1076,6 +1143,51 @@
         ],
         "title": "AgentCapability"
       },
+      "Candidate": {
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "title": "Candidateid"
+          },
+          "box": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Box"
+          },
+          "detectionScore": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Detectionscore"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/Result"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidateId",
+          "box",
+          "detectionScore",
+          "classification"
+        ],
+        "title": "Candidate"
+      },
       "Capabilities": {
         "properties": {
           "dataMode": {
@@ -1095,7 +1207,7 @@
             "$ref": "#/components/schemas/ClassifierCapability"
           },
           "detection": {
-            "$ref": "#/components/schemas/Capability"
+            "$ref": "#/components/schemas/DetectionCapability"
           },
           "agent": {
             "$ref": "#/components/schemas/AgentCapability"
@@ -1111,25 +1223,6 @@
           "agent"
         ],
         "title": "Capabilities"
-      },
-      "Capability": {
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "title": "Available"
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "available",
-          "reason"
-        ],
-        "title": "Capability"
       },
       "Catalog": {
         "properties": {
@@ -1430,6 +1523,221 @@
           "latitude"
         ],
         "title": "CoordinateSystem"
+      },
+      "DetectionCapability": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "modelVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelversion"
+          },
+          "preprocessingVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preprocessingversion"
+          },
+          "maxImageSide": {
+            "type": "integer",
+            "title": "Maximageside"
+          },
+          "maxImagePixels": {
+            "type": "integer",
+            "title": "Maximagepixels"
+          },
+          "maxUploadBytes": {
+            "type": "integer",
+            "title": "Maxuploadbytes"
+          },
+          "maxCandidates": {
+            "type": "integer",
+            "title": "Maxcandidates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "available",
+          "reason",
+          "maxImageSide",
+          "maxImagePixels",
+          "maxUploadBytes",
+          "maxCandidates"
+        ],
+        "title": "DetectionCapability"
+      },
+      "DetectionInput": {
+        "properties": {
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "preprocessingVersion": {
+            "type": "string",
+            "title": "Preprocessingversion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "width",
+          "height",
+          "preprocessingVersion"
+        ],
+        "title": "DetectionInput"
+      },
+      "DetectionResult": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "detections",
+              "no_detections"
+            ],
+            "title": "Outcome"
+          },
+          "coordinateSpace": {
+            "type": "string",
+            "enum": [
+              "image_pixels"
+            ],
+            "const": "image_pixels",
+            "title": "Coordinatespace"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "coordinateSpace",
+          "truncated",
+          "candidates"
+        ],
+        "title": "DetectionResult"
+      },
+      "DetectionTask": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "title": "Taskid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "detect"
+            ],
+            "const": "detect",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "modelVersion": {
+            "type": "string",
+            "title": "Modelversion"
+          },
+          "preprocessingVersion": {
+            "type": "string",
+            "title": "Preprocessingversion"
+          },
+          "input": {
+            "$ref": "#/components/schemas/DetectionInput"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "imageUrl": {
+            "type": "string",
+            "title": "Imageurl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "kind",
+          "status",
+          "createdAt",
+          "finishedAt",
+          "modelVersion",
+          "preprocessingVersion",
+          "input",
+          "result",
+          "errorCode",
+          "imageUrl"
+        ],
+        "title": "DetectionTask"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1960,7 +2268,14 @@
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/Task"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Task"
+                },
+                {
+                  "$ref": "#/components/schemas/DetectionTask"
+                }
+              ]
             },
             "type": "array",
             "title": "Items"

@@ -17,6 +17,9 @@ from api.classifier import DinoClassifier, PREPROCESSING_VERSION, REVIEW_POLICY
 from api.recognition_routes import RecognitionBoundary, router as recognition_router
 from api.recognition_store import TaskStore
 from api.recognition_worker import RecognitionWorker
+from api.detector import (DETECTION_PREPROCESSING_VERSION, MAX_CANDIDATES, MAX_DETECTION_PIXELS,
+                          MAX_DETECTION_SIDE, YoloDetector)
+from api.image_policy import MAX_UPLOAD_BYTES
 
 from api.agent import llm
 from api.agent.records import TraceRecorder
@@ -26,8 +29,8 @@ from api.agent.service import iter_agent_events, run_agent
 from api.schemas import (
     AgentCapability,
     Capabilities,
-    Capability,
     ClassifierCapability,
+    DetectionCapability,
     Catalog,
     Health,
     Slide,
@@ -70,7 +73,7 @@ def query_bounds(bbox: str | None = Query(default=None, max_length=160)) -> Boun
 
 def create_app(catalog_path: str | Path | None = None, *, database_path: str | Path | None = None,
                asset_root: str | Path | None = None, classifier=None,
-               recognition_database: str | Path | None = None) -> FastAPI:
+               recognition_database: str | Path | None = None, detector=None) -> FastAPI:
     if database_path is not None and catalog_path is not None:
         raise ValueError("Choose a catalog file or a database, not both")
     selected_database = database_path or (os.environ.get("MARS_DB_PATH") if catalog_path is None else None)
@@ -100,7 +103,16 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
             raise ValueError('Set MARS_RECOGNITION_DB for durable recognition records.')
         if task_database and selected_database and Path(task_database).resolve() == Path(selected_database).resolve():
             raise ValueError('Recognition records must use a database separate from the geological catalog.')
-        worker = RecognitionWorker(TaskStore(task_database), model) if task_database else None
+        detection_model = detector
+        weights = os.environ.get('MARS_DETECTOR_WEIGHTS')
+        if detection_model is None and weights:
+            if model is None or not task_database:
+                raise ValueError('Configured detection needs a classifier and a private recognition database.')
+            detection_model = YoloDetector(weights, os.environ.get('MARS_DETECTOR_SHA256', ''),
+                os.environ.get('MARS_DETECTOR_VERSION', ''), device=os.environ.get('MARS_DETECTOR_DEVICE', 'cpu'))
+        if detection_model is not None and (model is None or not task_database):
+            raise ValueError('Configured detection needs a classifier and a private recognition database.')
+        worker = RecognitionWorker(TaskStore(task_database), model, detection_model) if task_database else None
         application.state.recognition = worker
         if worker:
             worker.start()
@@ -215,7 +227,13 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
                 preprocessingVersion=PREPROCESSING_VERSION if model else None,
                 reviewPolicy=REVIEW_POLICY if model else None,
                 historyAvailable=worker is not None),
-            detection=Capability(available=False, reason=DETECTION_REASON),
+            detection=DetectionCapability(available=bool(worker and worker.detection_available), reason=(
+                'Ready; results require review.' if worker and worker.detection_available else
+                'Recognition worker is unavailable.' if worker and worker.detector is not None else DETECTION_REASON),
+                modelVersion=worker.detector.version if worker and worker.detector else None,
+                preprocessingVersion=DETECTION_PREPROCESSING_VERSION,
+                maxImageSide=MAX_DETECTION_SIDE, maxImagePixels=MAX_DETECTION_PIXELS,
+                maxUploadBytes=MAX_UPLOAD_BYTES, maxCandidates=MAX_CANDIDATES),
             agent=AgentCapability(
                 available=agent_available,
                 model=llm.model_name(),

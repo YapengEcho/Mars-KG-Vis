@@ -9,6 +9,11 @@ import sqlite3
 import uuid
 
 
+# Status and history reads must not load pending images or preview BLOBs.
+TASK_FIELDS = ('id,kind,status,created_at,finished_at,model_version,preprocessing_version,'
+               'input_json,result_json,error_code')
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -27,6 +32,7 @@ class TaskStore:
                     token_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS recognition_jobs (
                     id TEXT PRIMARY KEY, owner_hash TEXT NOT NULL REFERENCES recognition_sessions(token_hash),
+                    kind TEXT NOT NULL DEFAULT 'classify' CHECK(kind IN ('classify','detect')),
                     status TEXT NOT NULL CHECK(status IN ('queued','running','completed','failed')),
                     created_at TEXT NOT NULL, finished_at TEXT, model_version TEXT NOT NULL,
                     preprocessing_version TEXT NOT NULL, input_json TEXT NOT NULL,
@@ -34,6 +40,11 @@ class TaskStore:
                     result_json TEXT, error_code TEXT);
                 CREATE INDEX IF NOT EXISTS recognition_owner ON recognition_jobs(owner_hash,created_at);
             ''')
+            db.execute('BEGIN IMMEDIATE')
+            fields = {column['name'] for column in db.execute('PRAGMA table_info(recognition_jobs)')}
+            if 'kind' not in fields:
+                db.execute("ALTER TABLE recognition_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'classify' "
+                           "CHECK(kind IN ('classify','detect'))")
 
     @contextmanager
     def connect(self):
@@ -64,16 +75,23 @@ class TaskStore:
         return digest if found else None
 
     def enqueue(self, owner, prepared, model_version, max_pending=8):
+        return self._enqueue(owner, prepared, model_version, 'classify', max_pending)
+
+    def enqueue_detection(self, owner, prepared, model_version):
+        return self._enqueue(owner, prepared, model_version, 'detect', 8)
+
+    def _enqueue(self, owner, prepared, model_version, kind, max_pending):
         task_id = uuid.uuid4().hex
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT count(*) FROM recognition_jobs WHERE status IN ('queued','running')").fetchone()[0] >= max_pending:
                 raise QueueFull()
             db.execute('''INSERT INTO recognition_jobs
-                (id,owner_hash,status,created_at,model_version,preprocessing_version,input_json,pixels,weights_json,preview)
-                VALUES (?,?,'queued',?,?,?,?,?,?,?)''',
-                (task_id,owner,now(),model_version,prepared.metadata['preprocessingVersion'],
-                 json.dumps(prepared.metadata),prepared.pixels,json.dumps(prepared.weights),prepared.preview))
+                (id,owner_hash,kind,status,created_at,model_version,preprocessing_version,input_json,pixels,weights_json,preview)
+                VALUES (?,?,?,'queued',?,?,?,?,?,?,?)''',
+                (task_id,owner,kind,now(),model_version,prepared.metadata['preprocessingVersion'],
+                 json.dumps(prepared.metadata),prepared.pixels,
+                 json.dumps(prepared.weights) if kind == 'classify' else None,prepared.preview))
         return task_id
 
     def recover_interrupted(self):
@@ -97,7 +115,7 @@ class TaskStore:
 
     @staticmethod
     def public(row):
-        return dict(taskId=row['id'],kind='classify',status=row['status'],createdAt=row['created_at'],
+        return dict(taskId=row['id'],kind=row['kind'],status=row['status'],createdAt=row['created_at'],
             finishedAt=row['finished_at'],modelVersion=row['model_version'],
             preprocessingVersion=row['preprocessing_version'],input=json.loads(row['input_json']),
             result=json.loads(row['result_json']) if row['result_json'] else None,
@@ -105,14 +123,16 @@ class TaskStore:
 
     def get(self, owner, task_id):
         with self.connect() as db:
-            row = db.execute('SELECT * FROM recognition_jobs WHERE id=? AND owner_hash=?', (task_id,owner)).fetchone()
+            row = db.execute(f'SELECT {TASK_FIELDS} FROM recognition_jobs WHERE id=? AND owner_hash=?',
+                             (task_id,owner)).fetchone()
             return self.public(row) if row else None
 
-    def list(self, owner, page, page_size):
+    def list(self, owner, page, page_size, kind='classify'):
         with self.connect() as db:
-            total = db.execute('SELECT count(*) FROM recognition_jobs WHERE owner_hash=?',(owner,)).fetchone()[0]
-            rows = db.execute('SELECT * FROM recognition_jobs WHERE owner_hash=? ORDER BY rowid DESC LIMIT ? OFFSET ?',
-                              (owner,page_size,(page-1)*page_size)).fetchall()
+            total = db.execute('SELECT count(*) FROM recognition_jobs WHERE owner_hash=? AND kind=?', (owner,kind)).fetchone()[0]
+            rows = db.execute(f'SELECT {TASK_FIELDS} FROM recognition_jobs WHERE owner_hash=? AND kind=? '
+                              'ORDER BY rowid DESC LIMIT ? OFFSET ?',
+                              (owner,kind,page_size,(page-1)*page_size)).fetchall()
             return dict(items=[self.public(r) for r in rows],total=total,page=page,pageSize=page_size)
 
     def image(self, owner, task_id):

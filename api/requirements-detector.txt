@@ -1,0 +1,2 @@
+# Optional detector runtime; install in the same environment as the classifier.
+ultralytics==8.4.160

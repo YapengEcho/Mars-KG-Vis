@@ -18,6 +18,7 @@ python -m uvicorn api.main:app --host 127.0.0.1 --port 8000
 | `GET /api/stats` | 类型统计，支持与列表相同的 `q`、`type` |
 | `GET /api/capabilities` | 分类、检测服务可用状态 |
 | `POST /api/landslide/classify` | 配置真实权重后创建四分类任务，返回 `202`；未配置时 `503` |
+| `POST /api/landslide/detect` | 对受限 CTX 裁图检测并逐框四分类，返回 `202`，见[检测接口约定](../contracts/detection.md) |
 | `POST /api/recognition/sessions` | 创建识别记录的设备凭据 |
 | `GET /api/recognition/tasks`、`GET /api/recognition/tasks/{id}` | 查询当前设备的记录与结果 |
 | `GET /api/recognition/tasks/{id}/image`、`DELETE /api/recognition/tasks/{id}` | 授权预览与删除已结束任务 |
@@ -67,6 +68,23 @@ Manifest 固定模型版本、预处理和四个资源哈希，不上传 Git；�
 本版设备凭据用于记录隔离，创建凭据的接口未接账号或公网配额系统。默认只绑定本机；若部署到公网，需由网关提供 HTTPS、入口鉴权和请求配额。不要把演示服务直接当成公开多用户平台。
 
 `MARS_CORS_ORIGINS` 可设置允许访问的前端来源，多个来源用逗号分隔。默认允许本机 Vite 与 Capacitor 页面。手机浏览器联调时可将服务绑定到 `0.0.0.0`，使用电脑局域网地址，并添加实际页面来源；Android封装APP默认使用HTTPS服务，不默认放行明文请求。
+
+## 配置 CTX 裁图检测
+
+完成上述四分类配置后，在同一环境安装 `api/requirements-detector.txt`。使用组内交接的 YOLOv8n 单类检测权重，在服务端配置本地路径、校验值和版本。示例使用占位路径及通过可信交付记录核对的 SHA-256：
+
+```powershell
+python -m pip install -r api/requirements-detector.txt
+$env:MARS_DETECTOR_WEIGHTS = 'D:/private/detector/best.pt'
+$env:MARS_DETECTOR_SHA256 = '<detector-weight-sha256>'
+$env:MARS_DETECTOR_VERSION = 'yolov8n-quality-fold0-20261028'
+$env:MARS_DETECTOR_DEVICE = 'cpu'
+New-Item -ItemType Directory -Force output/runtime/yolo-config | Out-Null
+$env:YOLO_CONFIG_DIR = (Resolve-Path output/runtime/yolo-config).Path
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+已有任务数据库启动时会添加任务类型字段，原记录归为 `classify`。部署前按既有备份流程保存任务库。检测器与分类器同时就绪时，`/api/capabilities` 的 `detection.available` 为 `true`。推理只使用服务端配置的本地权重；生产环境按可信来源交接 `.pt` 文件。
 
 测试：
 
