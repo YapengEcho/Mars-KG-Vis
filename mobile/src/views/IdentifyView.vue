@@ -12,11 +12,15 @@ const available = ref(false)
 const serviceText = ref('正在检查识别服务…')
 const file = ref<File | null>(null)
 const preview = ref('')
+const dimensions = ref<{ width: number; height: number } | null>(null)
+const imageValid = ref(true)
 const message = ref('')
 const busy = ref(false)
 const choosing = ref(false)
 const isSample = ref(false)
 const sampleRoi = ref<number[] | undefined>()
+const MAX_IMAGE_PIXELS = 4096 * 4096
+const MAX_IMAGE_SIDE = 8192
 let selection = 0
 let active = true
 const taskId = computed(() => (typeof route.query.task === 'string' ? route.query.task : ''))
@@ -38,6 +42,8 @@ function clear() {
   if (preview.value) URL.revokeObjectURL(preview.value)
   preview.value = ''
   file.value = null
+  dimensions.value = null
+  imageValid.value = true
   message.value = ''
   isSample.value = false
   choosing.value = false
@@ -53,7 +59,26 @@ function choose(selected: File) {
     return
   }
   file.value = selected
+  imageValid.value = true
   preview.value = URL.createObjectURL(selected)
+  dimensions.value = null
+  const image = new Image()
+  image.onload = () => {
+    if (file.value !== selected) return
+    const width = image.naturalWidth
+    const height = image.naturalHeight
+    dimensions.value = { width, height }
+    if (width * height > MAX_IMAGE_PIXELS || Math.max(width, height) > MAX_IMAGE_SIDE) {
+      imageValid.value = false
+      message.value = `图片为 ${width}×${height}，超过单图限制：总像素不超过 4096×4096，最长边不超过 8192 像素。`
+    }
+  }
+  image.onerror = () => {
+    if (file.value !== selected) return
+    imageValid.value = false
+    message.value = '无法读取该图片，请重新选择有效的裁图。'
+  }
+  image.src = preview.value
 }
 async function pick(event: Event) {
   const input = event.target as HTMLInputElement
@@ -97,7 +122,7 @@ watch(
   { immediate: true },
 )
 async function submit() {
-  if (!file.value || !available.value || busy.value) return
+  if (!file.value || !imageValid.value || !available.value || busy.value) return
   busy.value = true
   message.value = ''
   try {
@@ -142,7 +167,7 @@ onBeforeUnmount(() => {
               ><ImagePlus :size="34" :stroke-width="1.4" /><strong>{{
                 choosing ? '正在加载影像…' : '选择滑坡影像'
               }}</strong
-              ><span>PNG / JPEG，最大 8 MB</span></template
+              ><span>PNG / JPEG，最大 8 MB；总像素不超过 4096×4096，最长边不超过 8192</span></template
             >
             <input
               type="file"
@@ -153,7 +178,9 @@ onBeforeUnmount(() => {
             />
           </label>
           <div v-if="file" class="file-row">
-            <span>{{ file.name }}</span
+            <span class="file-meta"
+              >{{ file.name
+              }}<em v-if="dimensions">{{ dimensions.width }}×{{ dimensions.height }}</em></span
             ><button class="icon-button" aria-label="移除图片" :disabled="busy" @click="clear">
               <X :size="18" />
             </button>
@@ -161,7 +188,7 @@ onBeforeUnmount(() => {
           <p v-if="isSample" class="sample-caption">编目影像 · 使用已有目标框</p>
           <button
             class="primary-button full-width"
-            :disabled="!available || !file || busy || choosing"
+            :disabled="!available || !file || !imageValid || busy || choosing"
             @click="submit"
           >
             <ScanLine :size="18" />{{ busy ? '正在提交…' : '开始分类' }}

@@ -13,11 +13,25 @@ const error = ref('')
 const image = ref('')
 const imageError = ref(false)
 const retry = ref(0)
+const elapsed = ref(0)
+const stopped = ref(false)
 let controller: AbortController | undefined
+let ticker: ReturnType<typeof setInterval> | undefined
+let runId = 0
+function stopTicker() {
+  if (ticker) clearInterval(ticker)
+  ticker = undefined
+}
 function stop() {
   controller?.abort()
+  stopTicker()
   if (image.value) URL.revokeObjectURL(image.value)
   image.value = ''
+}
+function halt() {
+  stopped.value = true
+  stopTicker()
+  controller?.abort()
 }
 function delay(signal: AbortSignal) {
   return new Promise<void>((resolve) => {
@@ -33,12 +47,19 @@ function delay(signal: AbortSignal) {
 watch(
   () => [props.taskId, retry.value],
   async () => {
+    const run = ++runId
     stop()
     task.value = null
     error.value = ''
     imageError.value = false
+    stopped.value = false
+    elapsed.value = 0
     controller = new AbortController()
     const signal = controller.signal
+    stopTicker()
+    ticker = setInterval(() => {
+      elapsed.value += 1
+    }, 1000)
     try {
       while (!signal.aborted) {
         const current = await getRecognition(
@@ -64,6 +85,8 @@ watch(
       }
     } catch (e) {
       if (!signal.aborted) error.value = e instanceof Error ? e.message : '暂时无法读取结果。'
+    } finally {
+      if (run === runId) stopTicker()
     }
   },
   { immediate: true },
@@ -81,8 +104,16 @@ onBeforeUnmount(stop)
       <img v-if="image" :src="image" alt="本次识别图片" class="result-preview" />
       <p v-if="imageError" class="muted">预览暂时无法读取，结果仍可查看。</p>
       <span class="status-pill" role="status">{{ taskLabel(task) }}</span>
-      <p v-if="task.status === 'queued' || task.status === 'running'" class="muted">
-        可以离开此页，在“我的”中继续查看，无需重复提交。
+      <p
+        v-if="!stopped && (task.status === 'queued' || task.status === 'running')"
+        class="muted recognition-wait"
+      >
+        已等待 {{ elapsed }} 秒，约每秒查询一次；可以离开此页，在“我的”中继续查看，无需重复提交。
+        <button class="text-button" @click="halt">停止等待</button>
+      </p>
+      <p v-if="stopped" class="muted" role="status">
+        已停止等待。识别在服务端继续进行，稍后到“我的”查看结果。
+        <button class="text-button" @click="retry++">继续查询</button>
       </p>
       <p v-if="task.status === 'failed'" role="alert">
         {{
