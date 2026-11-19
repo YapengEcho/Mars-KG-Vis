@@ -240,6 +240,49 @@ def test_sl_case_query_returns_only_sl_cases():
         assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
 
 
+def test_sl_case_query_without_space_returns_only_sl_cases():
+    """“有哪些SL案例”——类型码紧跟中文、没有空格，也要只返回 SL。"""
+    result = execute_tool(
+        "search_docs",
+        {"q": "有哪些SL案例", "doc_type": "case", "limit": 6},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    for item in result.payload["results"]:
+        assert item["doc_type"] == "case"
+        assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
+
+
+def test_sl_case_query_with_chinese_type_name_returns_only_sl_cases():
+    """“滑移型案例有哪些”——用中文类型名提问，也要只返回 SL。"""
+    result = execute_tool(
+        "search_docs",
+        {"q": "滑移型案例有哪些", "doc_type": "case", "limit": 6},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    for item in result.payload["results"]:
+        assert item["doc_type"] == "case"
+        assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
+
+
+def test_case_type_detection_ignores_landslide_ids_and_ambiguous_questions():
+    """编号里的 ls 不能被当成 SL；同时点名两个类型时不应过滤。"""
+    from api.agent.tools import _wanted_case_type
+
+    assert _wanted_case_type("ls_0493") is None
+    assert _wanted_case_type("请看 ls_0493 这个案例") is None
+    assert _wanted_case_type("有哪些 SL 案例") == "SL"
+    assert _wanted_case_type("有哪些SL案例") == "SL"
+    assert _wanted_case_type("滑移型案例有哪些") == "SL"
+    assert _wanted_case_type("SL 和 SP 的区别") is None
+    assert _wanted_case_type("滑移型和滑塌型有什么不同") is None
+
+
 def test_case_docs_record_public_image_status():
     """每条案例都要写明公开影像状态，并与 samples 清单一致。"""
     import json

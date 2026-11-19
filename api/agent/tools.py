@@ -4,8 +4,22 @@ from dataclasses import dataclass, field
 from api.schemas import Catalog, Slide
 from api.catalog_query import filter_records, parse_bbox
 from api.agent.schemas import AgentAction, Citation
-# Standalone SL/SP/FL/CL only: "ls_0493" must not match (no word boundary after s).
-_TYPE_CODE = re.compile(r"\b(SL|SP|FL|CL)\b", re.IGNORECASE)
+# Standalone SL/SP/FL/CL: the neighbours must not be ASCII word chars, so
+# "ls_0493" and "display" do not match, but "有哪些SL案例" does (中文不是 ASCII 词字符)。
+_TYPE_CODE = re.compile(r"(?<![A-Za-z0-9_])(SL|SP|FL|CL)(?![A-Za-z0-9_])", re.IGNORECASE)
+# 用户也常用中文类型名提问，映射到同一个类型码。
+_TYPE_NAMES = {"滑移型": "SL", "滑塌型": "SP", "流动型": "FL", "复合型": "CL"}
+
+
+def _wanted_case_type(query: str) -> str | None:
+    """Return the single type a question asks about, or None when it is ambiguous.
+
+    问题里只点名一个类型时（SL / 滑移型 任一写法），案例结果只保留该类型；
+    同时点名多个类型（如“SL 和 SP 的区别”）则不过滤。
+    """
+    codes = {match.group(1).upper() for match in _TYPE_CODE.finditer(query)}
+    codes.update(code for name, code in _TYPE_NAMES.items() if name in query)
+    return codes.pop() if len(codes) == 1 else None
 @dataclass
 class ToolResult:
     name: str
@@ -192,10 +206,9 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
         query = str(args.get("q", ""))
         limit = int(args.get("limit", 5) or 5)
         docs = retriever.search(query, doc_type=args.get("doc_type"), limit=max(limit * 4, 20))
-        # 问题里只点名了一个类型码时，只保留该类型的案例，否则问“有哪些 SL 案例”
+        # 问题里只点名了一个类型时，只保留该类型的案例，否则问“有哪些 SL 案例”
         # 会把 SP/FL/CL 的案例一起带出来（它们的标题都含“案例”）。
-        codes = _TYPE_CODE.findall(query.upper())
-        wanted = codes[0] if len(set(codes)) == 1 else None
+        wanted = _wanted_case_type(query)
         if wanted:
             docs = [doc for doc in docs if doc.doc_type != "case" or doc.case_type == wanted]
         docs = docs[:limit]
