@@ -997,6 +997,7 @@
     "/api/agent/chat": {
       "post": {
         "summary": "Agent Chat",
+        "description": "Public chat; selecting recognitionTaskId requires its device credential.\n\nSelected tasks currently return a stored summary without a language-model call.",
         "operationId": "agent_chat_api_agent_chat_post",
         "requestBody": {
           "content": {
@@ -1019,6 +1020,15 @@
               }
             }
           },
+          "401": {
+            "description": "A selected recognition task requires a valid device Bearer credential."
+          },
+          "404": {
+            "description": "The selected task does not exist or is not owned by this device."
+          },
+          "503": {
+            "description": "Recognition storage is not configured or is unavailable."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1029,13 +1039,19 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {}
+        ]
       }
     },
     "/api/agent/chat/stream": {
       "post": {
         "summary": "Agent Chat Stream",
-        "description": "Server-sent events variant of /api/agent/chat.\n\nEmits one ``data:`` frame per agent event (delta / status / done /\nerror) so clients can render the answer incrementally.",
+        "description": "Server-sent events variant of /api/agent/chat.\n\nEmits one ``data:`` frame per agent event (delta / status / done /\nerror) so clients can render the answer incrementally.\nA selected recognitionTaskId requires its device Bearer credential;\nauthorization failures return ordinary JSON before SSE opens.",
         "operationId": "agent_chat_stream_api_agent_chat_stream_post",
         "requestBody": {
           "content": {
@@ -1049,12 +1065,23 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SSE status/delta/done/error frames; terminal frames contain ChatResponse.",
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
               }
             }
+          },
+          "401": {
+            "description": "A selected recognition task requires a valid device Bearer credential."
+          },
+          "404": {
+            "description": "The selected task does not exist or is not owned by this device."
+          },
+          "503": {
+            "description": "Recognition storage is not configured or is unavailable."
           },
           "422": {
             "description": "Validation Error",
@@ -1066,7 +1093,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {}
+        ]
       }
     }
   },
@@ -1300,6 +1333,21 @@
             ],
             "title": "Sessionid"
           },
+          "recognitionTaskId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 32,
+                "pattern": "^[a-f0-9]{32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recognitiontaskid",
+            "description": "Explicitly selected recognition task; requires its device Bearer credential."
+          },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/ChatMessage"
@@ -1381,6 +1429,17 @@
               }
             ],
             "title": "Version"
+          },
+          "recognitionTask": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Authorized task summary, read from storage; null for ordinary chat or lookup failure."
           }
         },
         "additionalProperties": false,
@@ -1477,6 +1536,11 @@
           "historyAvailable": {
             "type": "boolean",
             "title": "Historyavailable",
+            "default": false
+          },
+          "screeningAvailable": {
+            "type": "boolean",
+            "title": "Screeningavailable",
             "default": false
           }
         },
@@ -1936,6 +2000,131 @@
         ],
         "title": "Result"
       },
+      "ResultSummary": {
+        "properties": {
+          "prediction": {
+            "type": "string",
+            "enum": [
+              "SL",
+              "SP",
+              "FL",
+              "CL"
+            ],
+            "title": "Prediction"
+          },
+          "probabilities": {
+            "additionalProperties": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0
+            },
+            "type": "object",
+            "title": "Probabilities"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "uncertain": {
+            "type": "boolean",
+            "title": "Uncertain"
+          },
+          "reviewReasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reviewreasons"
+          },
+          "reviewPolicy": {
+            "type": "string",
+            "title": "Reviewpolicy"
+          },
+          "scoresCalibrated": {
+            "type": "boolean",
+            "title": "Scorescalibrated"
+          },
+          "modelVersion": {
+            "type": "string",
+            "title": "Modelversion"
+          },
+          "preprocessingVersion": {
+            "type": "string",
+            "title": "Preprocessingversion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prediction",
+          "probabilities",
+          "confidence",
+          "uncertain",
+          "reviewReasons",
+          "reviewPolicy",
+          "scoresCalibrated",
+          "modelVersion",
+          "preprocessingVersion"
+        ],
+        "title": "ResultSummary"
+      },
+      "ScreeningSummary": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "possible_landslide",
+              "no_landslide",
+              "unsupported_image",
+              "inconclusive"
+            ],
+            "title": "Decision"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "modelVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modelversion"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decision",
+          "score",
+          "threshold",
+          "modelVersion"
+        ],
+        "title": "ScreeningSummary"
+      },
       "Session": {
         "properties": {
           "token": {
@@ -2020,6 +2209,18 @@
               }
             ],
             "title": "Areakm2"
+          },
+          "perimeterKm": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perimeterkm"
           },
           "summary": {
             "type": "string",
@@ -2232,6 +2433,16 @@
               }
             ]
           },
+          "screening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreeningSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "errorCode": {
             "anyOf": [
               {
@@ -2301,6 +2512,103 @@
           "pageSize"
         ],
         "title": "TaskPage"
+      },
+      "TaskSummary": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 32,
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Taskid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "classify"
+            ],
+            "const": "classify",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "modelVersion": {
+            "type": "string",
+            "title": "Modelversion"
+          },
+          "preprocessingVersion": {
+            "type": "string",
+            "title": "Preprocessingversion"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "screening": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScreeningSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "kind",
+          "status",
+          "createdAt",
+          "finishedAt",
+          "modelVersion",
+          "preprocessingVersion",
+          "errorCode",
+          "result"
+        ],
+        "title": "TaskSummary",
+        "description": "Explicit allowlist: excludes images, input metadata and model digests."
       },
       "ToolCallRecord": {
         "properties": {

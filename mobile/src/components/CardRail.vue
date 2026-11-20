@@ -90,7 +90,7 @@ onBeforeUnmount(() => observer?.disconnect())
       <button
         class="icon-button"
         :aria-controls="id"
-        aria-label="上一张滑坡"
+        aria-label="上一条滑坡"
         :disabled="!canBack"
         @click="move(-1)"
       >
@@ -99,7 +99,7 @@ onBeforeUnmount(() => observer?.disconnect())
       <button
         class="icon-button"
         :aria-controls="id"
-        aria-label="下一张滑坡"
+        aria-label="下一条滑坡"
         :disabled="!canNext"
         @click="move(1)"
       >

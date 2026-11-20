@@ -2,11 +2,13 @@
 
 CTX 裁图的多候选检测与逐框分类见[检测接口约定](detection.md)。历史列表默认只返回单图分类记录。检测历史显式指定 `kind=detect`，任务详情按 `kind` 区分结果结构。
 
-本接口接收**已经裁好的单滑坡图片**，输出 SL、SP、FL、CL 四类分数。它不判断整幅图片有没有滑坡，也不在 CTX 大图里寻找目标。检测接分类安排在下一阶段。
+助手目前读取单图分类记录。提交本设备的检测任务给助手时，返回 `422 UNSUPPORTED_TASK_KIND`。检测记录可通过识别接口查询。
+
+单图分类接收已经裁好的灰度火星 CTX 影像。服务先检查输入并进行滑坡／背景二分类。通过筛查的裁片才进入 SL、SP、FL、CL 四分类。
 
 ## 能力与运行条件
 
-先请求 `GET /api/capabilities`。`classifier.available=true` 才允许提交；`historyAvailable=true` 表示可以读取历史记录，即使当前没有加载权重。未配置权重时，分类入口仍返回 `503 MODEL_NOT_CONFIGURED`，不会生成模拟预测。
+先请求 `GET /api/capabilities`。两阶段可用时，`classifier.available` 与 `classifier.screeningAvailable` 均为 `true`。`historyAvailable` 表示可以读取本设备的历史记录。缺少阶段权重时，提交返回 `503 MODEL_NOT_CONFIGURED` 或 `503 SCREENING_NOT_CONFIGURED`。
 
 服务使用 DINOv2-base、最后两块 q/v rank4 LoRA 和线性头。部署需同时提供 base 配置与权重、适配参数、训练时的特征标准化参数，以及包含 SHA256 的私有 manifest。启动时检查全部资源，校验失败则拒绝启动。加载只访问本地文件。
 
@@ -41,11 +43,13 @@ CTX 裁图的多候选检测与逐框分类见[检测接口约定](detection.md)
 - 不传 `roi` 时将整张裁图作为待分类区域，记录 `roiSource=whole_image_crop`；传入时记录 `provided_box`。ROI 不是自动检测框。
 - 只接受 `file` 和 `roi` 两个字段。
 
-返回对象含 `taskId`、`kind=classify`、`status`、UTC 时间、`modelVersion`、`preprocessingVersion`、`input`、`result`、`errorCode`、`imageUrl`。`input` 保存原图尺寸、ROI、缩放尺寸与补边，不保存上传文件名或磁盘路径。
+返回对象含 `taskId`、`kind=classify`、`status`、UTC 时间、`modelVersion`、`preprocessingVersion`、`input`、`screening`、`result`、`errorCode`、`imageUrl`。`input` 保存原图尺寸、ROI、缩放尺寸与补边。
 
 任务状态为 `queued → running → completed/failed`。首次 `202` 响应也可能已经是 `running` 或 `completed`；客户端检查状态，每隔约 1 秒查询，完成或失败后停止。离开页面可以停止查询，之后从历史列表恢复，不必重复上传。HTTP 查询超时不代表推理被取消。
 
-`result` 在完成前为 `null`。完成示例（数值仅用于说明结构）：
+`screening` 在完成前为 `null`。新任务完成后，`decision` 为 `possible_landslide`、`no_landslide`、`unsupported_image` 或 `inconclusive`。`score`、`threshold`、`modelVersion` 随筛查结果返回，未使用模型时为 `null`。筛查分数用于与固定门槛比较。`possible_landslide` 才会返回四分类 `result`，其他结果保持 `null`。早期单独运行四分类的记录保留原结果，其 `screening` 为 `null`。
+
+四分类输出示例（数值仅用于说明结构）：
 
 ```json
 {
@@ -78,7 +82,7 @@ DINOv2 生成 16×16 个 patch 特征；按每个 14×14 patch 与 ROI 的交叠
 
 | 情况 | HTTP／状态 |
 | --- | --- |
-| 未配置模型／存储／工作进程不可用 | `503 MODEL_NOT_CONFIGURED / RECOGNITION_NOT_CONFIGURED / WORKER_UNAVAILABLE` |
+| 未配置模型／筛查／存储／工作进程不可用 | `503 MODEL_NOT_CONFIGURED / SCREENING_NOT_CONFIGURED / RECOGNITION_NOT_CONFIGURED / WORKER_UNAVAILABLE` |
 | 缺少、错误或到期的设备凭据 | `401 AUTH_REQUIRED` |
 | 文件／请求体／尺寸超限 | `413 UPLOAD_TOO_LARGE / IMAGE_DIMENSIONS_EXCEEDED` |
 | 非 PNG/JPEG、多帧图 | `415 UNSUPPORTED_IMAGE / ANIMATED_IMAGE` |
@@ -96,6 +100,6 @@ DINOv2 生成 16×16 个 patch 特征；按每个 14×14 patch 与 ROI 的交叠
 
 梁先楷：能力检查 → 获取／恢复凭据 → 选择单滑坡图片 → 提交 → 轮询 → 展示四类分数、待复核及版本；“我的”读取同一凭据下的列表、详情与预览。不能继续把 `202` 任务对象当作同步分类结果。
 
-周璇：结果查询工具在服务端携带当前设备的授权头读取任务，再把 `result` 的数值和版本交给 Agent 解释；凭据不进入模型上下文。不凭 `taskId` 绕过访问校验，也不自行推断缺失结果。
+周璇：聊天入口已校验设备授权并注入只读、限定单任务的内部上下文；同进程直接调用共用查询服务，无需再向本机发送HTTP请求。`query_recognition_task`返回经过白名单筛选的结果，供后续工具注册和解释使用；凭据不进入模型上下文。完整字段、错误处理和对接步骤见[助手任务查询约定](agent-recognition.md)。
 
-当前网页已完成上述任务与历史交互；凭据使用会话存储，刷新保留，关闭标签页后不恢复。原生设备安全存储、真机联调及Agent结果工具仍待验收。公开仓库另含8张允许公开的训练示例，不包含真实权重、完整目录、其余影像或运行数据库。
+当前网页已完成识别任务与历史交互；凭据使用会话存储，刷新保留，关闭标签页后不恢复。后端聊天入口已能读取授权的任务并返回原始摘要；Agent自然语言解释、手机任务选择、原生设备安全存储和真机联调仍待完成。公开仓库另含8张允许公开的训练示例，不包含真实权重、完整目录、其余影像或运行数据库。

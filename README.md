@@ -2,6 +2,8 @@
 
 火星滑坡探索移动端，支持火星球浏览、目录查询、类型图鉴与点位收藏。
 
+[在线课程演示](https://alanspace.cn/mars/)展示完整编目、四类图鉴和统计图，并接入单图识别与资料问答。仓库按公开样例范围提供可独立运行的本地版本。
+
 仓库另保留滑坡检测与四分类的[模型研究代码及结果说明](docs/research/README.md)，包括人工修框、数据导出、训练对照与联合评估。配置本机模型服务后，客户端可提交单滑坡图片、查询四类分数和回看识别记录；权重单独交接。
 
 组内计划：[分工与八周计划](分工.md)，包含当前进度、每位成员的本周交付及后续安排。
@@ -12,20 +14,30 @@
 - 详情影像可缩放、拖动与复位（滚轮、双指、双击、按钮）。
 - 已有边界几何按需从现有几何接口加载，可在地图上显示或隐藏；坐标系未确认或记录无几何时明确说明原因。
 - 按坐标定位：输入经纬度旋转火星，500 km 内有记录时同时选中该记录。
-- 点位定位与列表联动：自动滚动并高亮对应卡片；相距不足 1.5° 的密集点位可依次切换。
-- 按编号、名称和说明查询，类型筛选，完整结果列表分批加载，并提供加载状态与失败重试。
+- 点位定位与列表联动，自动翻到对应页并高亮指定记录。相距不足 1.5° 的密集点位可依次切换。
+- 按编号、名称和说明查询，支持类别筛选和翻页。统计页展示类型占比、纬度分布和面积汇总。
 - 真实目录与示例数据在页面分开标识；`#/?focus=<记录id或原始编号>` 可直接定位点位。
 - SL、SP、FL、CL 四类目录与案例入口。
 - 本机收藏与回访，收藏按最近顺序排列；失效收藏可一键清理。
-- 单图分类上传、任务等待、四类分数与待复核提示；历史记录支持回看和删除。
+- 单图识别先筛查滑坡或背景，再对通过筛查的裁片判断类型。历史记录支持回看和删除。
 - 上传前校验 PNG/JPEG 裁图（不超过 8 MB、总像素不超过 4096×4096、最长边不超过 8192），提交后显示等待秒数；失败按错误码说明原因。
 - 8张公开真实裁片的浏览、缩放、下载和分类试用入口。
 
-默认展示8条已允许公开的真实滑坡及其影像，APP与API使用同一子集。球面按原始坐标提供位置参考，明确标注“待核准”，未进行纬度转换；这与坐标已核准的正式目录模式分开。20条虚构记录只保留作测试数据。分类和资料问答需配置相应服务资源；大图检测尚未接入。
+本地默认展示 8 条已允许公开的真实滑坡及其影像，前端与 API 使用同一子集。球面按原始坐标绘制点位，坐标及几何校验状态见[编目接口](contracts/catalog.md)。当前线上识别页面接收裁好的单张影像。仓库的 CTX 裁图检测接口配置说明见 [API 文档](api/README.md)。
 
 ## 技术栈
 
 移动端使用 Vue 3、TypeScript、Vite、Three.js 和 Capacitor；API 使用 FastAPI。
+
+## 数据采集和转换
+
+在仓库根目录运行以下命令，依次定位 GeoMars 首页、地图脚本和编目资源，再将 493 号记录导出为 CSV 和 JSON。
+
+```bash
+python data/scripts/download.py --source-id 493 --output-dir output/geomars-demo
+```
+
+`data/scripts/download.py` 使用 Python 标准库读取资源。`scripts/export_catalog.py` 将编目 CSV 转为接口所需字段，核验 ID、坐标范围及坐标状态。导出的文件保存在本地输出目录。
 
 ## 本地运行
 
@@ -68,15 +80,15 @@ python scripts/import_catalog_sqlite.py --input examples/catalog.demo.json --out
 
 ## 智能助手（Agent）
 
-对话接口为 `POST /api/agent/chat`，默认未启用，需在服务端配置语言模型（凭据不进仓库）：
+问候、常见编号查找、地图定位和统计直接读取编目。`POST /api/agent/chat` 返回完整答复，`POST /api/agent/chat/stream` 支持流式答复。开放式问题需在服务端配置兼容的语言模型，例子如下。
 
 ```dotenv
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
-DEEPSEEK_API_KEY=sk-xxxxxxxx
+DEEPSEEK_API_KEY=<你的服务端密钥>
 ```
 
-可选：`MARS_DOCS_PATH` 指向图鉴 / 案例资料 JSON（格式见 `api/data/docs/guidebook.demo.json`）。未配置 Key 时，`/api/capabilities` 中 `agent.available=false`，对话接口返回 `llm_unavailable` 而不是报错。
+`MARS_DOCS_PATH` 可指向自备的图鉴或案例资料 JSON。未配置语言模型时，开放式问题返回 `llm_unavailable`，目录快捷查询仍可用。
 
 ## Android
 
@@ -112,6 +124,7 @@ API测试在仓库根目录运行：
 ```bash
 python -m pip install -r api/requirements-dev.txt
 python -m pytest api/tests -q
+python -m pytest data/scripts/test_download.py -q
 ```
 
 ## 目录

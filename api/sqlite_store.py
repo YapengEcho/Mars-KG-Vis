@@ -41,7 +41,7 @@ def build_database(path: Path, payload: dict | list, *, raw=False,
         version=version_override or catalog.version;mode=catalog.mode;state='ready';coordinates=catalog.coordinateSystem.model_dump()
         index={int(r['source_id']):r for r in (source_index or [])}
         records=[dict(r.model_dump(),rawType=index.get(r.sourceId,{}).get('raw_type',r.type),
-                      perimeter=None,original=r.model_dump()) for r in catalog.records]
+                      perimeter=r.perimeterKm,original=r.model_dump()) for r in catalog.records]
     if not isinstance(version,str) or not version.strip():raise ValueError('Version must not be empty')
     ids=set();source_ids=set()
     for r in records:
@@ -111,7 +111,7 @@ def load_sqlite_catalog(path: Path) -> Catalog:
         rows=db.execute('''SELECT l.*,s.title AS source_title,s.url AS source_url
             FROM landslides l JOIN sources s ON s.id=l.source_ref ORDER BY l.rowid''').fetchall()
         records=[dict(id=r['id'],sourceId=r['source_id'],name=r['name'],type=r['type'],longitude=r['longitude'],
-            latitude=r['latitude'],areaKm2=r['area_km2'],summary=r['summary'],imageUrl=r['image_url'],
+            latitude=r['latitude'],areaKm2=r['area_km2'],perimeterKm=r['perimeter'],summary=r['summary'],imageUrl=r['image_url'],
             source={'title':r['source_title'],'url':r['source_url']},isDemo=bool(r['is_demo'])) for r in rows]
         return Catalog.model_validate(dict(version=metadata['version'],mode=metadata['mode'],
             coordinateSystem=metadata['coordinateSystem'],records=records))

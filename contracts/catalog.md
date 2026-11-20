@@ -21,6 +21,7 @@
 | `type` | `SL`、`SP`、`FL`、`CL` |
 | `longitude` / `latitude` | 火星经纬度，不能套用地球定位转换 |
 | `areaKm2` | 平方公里；未知为 `null` |
+| `perimeterKm` | 公里；仅填写已核实单位的编目周长，未知为 `null` 或省略 |
 | `summary` | 有来源的简要说明；未知可留空 |
 | `imageUrl` | HTTPS或同源绝对路径；未知为 `null` |
 | `source` | `{ "title": "来源名称", "url": null }`；链接使用HTTPS |

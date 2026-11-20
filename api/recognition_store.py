@@ -11,7 +11,7 @@ import uuid
 
 # Status and history reads must not load pending images or preview BLOBs.
 TASK_FIELDS = ('id,kind,status,created_at,finished_at,model_version,preprocessing_version,'
-               'input_json,result_json,error_code')
+               'input_json,result_json,error_code,screening_json')
 
 
 def now():
@@ -37,14 +37,18 @@ class TaskStore:
                     created_at TEXT NOT NULL, finished_at TEXT, model_version TEXT NOT NULL,
                     preprocessing_version TEXT NOT NULL, input_json TEXT NOT NULL,
                     pixels BLOB, weights_json TEXT, preview BLOB NOT NULL,
-                    result_json TEXT, error_code TEXT);
+                    result_json TEXT, error_code TEXT, screen_input BLOB, screening_json TEXT);
                 CREATE INDEX IF NOT EXISTS recognition_owner ON recognition_jobs(owner_hash,created_at);
             ''')
             db.execute('BEGIN IMMEDIATE')
-            fields = {column['name'] for column in db.execute('PRAGMA table_info(recognition_jobs)')}
-            if 'kind' not in fields:
+            columns = {column['name'] for column in db.execute('PRAGMA table_info(recognition_jobs)')}
+            if 'kind' not in columns:
                 db.execute("ALTER TABLE recognition_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'classify' "
                            "CHECK(kind IN ('classify','detect'))")
+            if 'screen_input' not in columns:
+                db.execute('ALTER TABLE recognition_jobs ADD COLUMN screen_input BLOB')
+            if 'screening_json' not in columns:
+                db.execute('ALTER TABLE recognition_jobs ADD COLUMN screening_json TEXT')
 
     @contextmanager
     def connect(self):
@@ -74,30 +78,31 @@ class TaskStore:
                                (digest,now())).fetchone()
         return digest if found else None
 
-    def enqueue(self, owner, prepared, model_version, max_pending=8):
-        return self._enqueue(owner, prepared, model_version, 'classify', max_pending)
+    def enqueue(self, owner, prepared, model_version, max_pending=8, *, screen_input=None):
+        return self._enqueue(owner, prepared, model_version, 'classify', max_pending, screen_input=screen_input)
 
     def enqueue_detection(self, owner, prepared, model_version):
         return self._enqueue(owner, prepared, model_version, 'detect', 8)
 
-    def _enqueue(self, owner, prepared, model_version, kind, max_pending):
+    def _enqueue(self, owner, prepared, model_version, kind, max_pending, *, screen_input=None):
         task_id = uuid.uuid4().hex
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT count(*) FROM recognition_jobs WHERE status IN ('queued','running')").fetchone()[0] >= max_pending:
                 raise QueueFull()
             db.execute('''INSERT INTO recognition_jobs
-                (id,owner_hash,kind,status,created_at,model_version,preprocessing_version,input_json,pixels,weights_json,preview)
-                VALUES (?,?,?,'queued',?,?,?,?,?,?,?)''',
+                (id,owner_hash,kind,status,created_at,model_version,preprocessing_version,input_json,
+                 pixels,weights_json,preview,screen_input)
+                VALUES (?,?,?,'queued',?,?,?,?,?,?,?,?)''',
                 (task_id,owner,kind,now(),model_version,prepared.metadata['preprocessingVersion'],
                  json.dumps(prepared.metadata),prepared.pixels,
-                 json.dumps(prepared.weights) if kind == 'classify' else None,prepared.preview))
+                 json.dumps(prepared.weights) if kind == 'classify' else None,prepared.preview,screen_input))
         return task_id
 
     def recover_interrupted(self):
         with self.connect() as db:
             db.execute("""UPDATE recognition_jobs SET status='failed',finished_at=?,error_code='PROCESS_RESTARTED',
-                pixels=NULL,weights_json=NULL WHERE status IN ('queued','running')""", (now(),))
+                pixels=NULL,weights_json=NULL,screen_input=NULL WHERE status IN ('queued','running')""", (now(),))
 
     def claim(self):
         with self.connect() as db:
@@ -107,19 +112,24 @@ class TaskStore:
                 db.execute("UPDATE recognition_jobs SET status='running' WHERE id=?", (row['id'],))
             return row
 
-    def finish(self, task_id, result=None, error=None):
+    def finish(self, task_id, result=None, error=None, *, screening=None):
         with self.connect() as db:
-            db.execute('''UPDATE recognition_jobs SET status=?,finished_at=?,result_json=?,error_code=?,
-                pixels=NULL,weights_json=NULL WHERE id=? AND status='running' ''',
-                ('failed' if error else 'completed',now(),json.dumps(result,allow_nan=False) if result else None,error,task_id))
+            db.execute('''UPDATE recognition_jobs SET status=?,finished_at=?,result_json=?,error_code=?,screening_json=?,
+                pixels=NULL,weights_json=NULL,screen_input=NULL WHERE id=? AND status='running' ''',
+                ('failed' if error else 'completed', now(),
+                 json.dumps(result, allow_nan=False) if result else None, error,
+                 json.dumps(screening, allow_nan=False) if screening else None, task_id))
 
     @staticmethod
     def public(row):
-        return dict(taskId=row['id'],kind=row['kind'],status=row['status'],createdAt=row['created_at'],
+        task = dict(taskId=row['id'],kind=row['kind'],status=row['status'],createdAt=row['created_at'],
             finishedAt=row['finished_at'],modelVersion=row['model_version'],
             preprocessingVersion=row['preprocessing_version'],input=json.loads(row['input_json']),
             result=json.loads(row['result_json']) if row['result_json'] else None,
             errorCode=row['error_code'],imageUrl=f'/api/recognition/tasks/{row["id"]}/image')
+        if row['kind'] == 'classify':
+            task['screening'] = json.loads(row['screening_json']) if row['screening_json'] else None
+        return task
 
     def get(self, owner, task_id):
         with self.connect() as db:

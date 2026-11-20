@@ -62,7 +62,8 @@ function resetSession() {
 onMounted(async () => {
   void load()
   try {
-    connected.value = (await fetchCapabilities())?.classifier.available ?? false
+    const classifier = (await fetchCapabilities())?.classifier
+    connected.value = Boolean(classifier?.available && classifier.screeningAvailable)
   } catch {
     connected.value = false
   }
@@ -87,7 +88,11 @@ onMounted(async () => {
       <article v-for="task in tasks" :key="task.taskId" class="history-row">
         <RouterLink :to="`/recognize?task=${task.taskId}`"
           ><strong>{{
-            task.result ? `${task.result.prediction} · ${taskLabel(task)}` : taskLabel(task)
+            task.result &&
+            task.screening?.decision === 'possible_landslide' &&
+            task.status === 'completed'
+              ? `${task.result.prediction} · ${taskLabel(task)}`
+              : taskLabel(task)
           }}</strong
           ><span>{{ new Date(task.createdAt).toLocaleString('zh-CN') }}</span></RouterLink
         >
@@ -110,7 +115,7 @@ onMounted(async () => {
     </div>
     <div v-else-if="!loading && !error" class="empty-inline">
       <p>{{ apiBase ? '本次会话还没有识别记录。' : '尚未连接识别记录服务。' }}</p>
-      <RouterLink to="/recognize" class="text-button">选择图片试分类 →</RouterLink>
+      <RouterLink to="/recognize" class="text-button">试试识别 →</RouterLink>
     </div>
     <details class="quiet-details">
       <summary>记录保存说明</summary>
@@ -144,7 +149,7 @@ onMounted(async () => {
     </div>
     <div class="service-status">
       <span :class="{ ready: connected }"></span
-      >{{ connected ? '单图分类服务已连接' : '识别服务未连接' }}
+      >{{ connected ? '单图识别服务已连接' : '识别服务未连接' }}
     </div>
     <div class="info-card">
       <Info :size="18" />

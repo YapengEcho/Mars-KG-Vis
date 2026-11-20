@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import ZoomableImage from '../components/ZoomableImage.vue'
+import { atlasContent } from '../lib/atlas'
+import { publicAssetUrl } from '../lib/publicAssets'
 import { sampleById } from '../lib/samples'
 import { typeInfo } from '../types'
-import { publicCatalog } from '../lib/publicCatalog'
-import { coordinateStatus } from '../lib/coordinateStatus'
 const props = defineProps<{ id: string }>()
 const sample = computed(() => sampleById(props.id))
-const coordinates = coordinateStatus(publicCatalog)
+const usesReferencePaper = computed(
+  () => sample.value?.source.url === atlasContent.sourceDocument.url,
+)
 </script>
 <template>
   <section class="content-view sample-view">
@@ -18,13 +20,16 @@ const coordinates = coordinateStatus(publicCatalog)
         <p>编目类型：{{ typeInfo[sample.type].name }}（{{ sample.type }}）</p>
       </div>
       <div class="sample-media">
-        <ZoomableImage :src="sample.imageUrl" :alt="`滑坡 ${sample.sourceId}`" />
+        <ZoomableImage :src="publicAssetUrl(sample.imageUrl)" :alt="`滑坡 ${sample.sourceId}`" />
       </div>
       <p class="sample-caption">224 × 224 像素</p>
       <div class="sample-actions">
         <RouterLink :to="`/recognize?sample=${sample.id}`" class="primary-button"
           >识别这张影像</RouterLink
-        ><a :href="sample.imageUrl" :download="`${sample.id}.png`" class="secondary-button"
+        ><a
+          :href="publicAssetUrl(sample.imageUrl)"
+          :download="`${sample.id}.png`"
+          class="secondary-button"
           >下载影像</a
         >
       </div>
@@ -39,9 +44,11 @@ const coordinates = coordinateStatus(publicCatalog)
         <p class="muted">
           图片来自已有训练裁片；试用结果不作为独立测试成绩。类别沿用原编目，单张影像不能代表这一类的所有形态。
         </p>
-        <p class="muted">当前公开8张影像。{{ coordinates.note }}</p>
         <a :href="sample.source.url" target="_blank" rel="noopener noreferrer" class="text-button"
-          >编目来源：{{ sample.source.title }} ↗</a
+          >{{ usesReferencePaper ? '参考论文' : '编目来源' }}：{{
+            usesReferencePaper ? atlasContent.sourceDocument.title : sample.source.title
+          }}
+          ↗</a
         >
       </details>
     </template>

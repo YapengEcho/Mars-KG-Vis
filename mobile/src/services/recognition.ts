@@ -11,6 +11,12 @@ export interface RecognitionResult {
   modelVersion: string
   preprocessingVersion: string
 }
+export interface RecognitionScreening {
+  decision: 'possible_landslide' | 'no_landslide' | 'unsupported_image' | 'inconclusive'
+  score: number | null
+  threshold: number | null
+  modelVersion: string | null
+}
 export interface RecognitionTask {
   taskId: string
   status: 'queued' | 'running' | 'completed' | 'failed'
@@ -19,6 +25,7 @@ export interface RecognitionTask {
   modelVersion: string
   preprocessingVersion: string
   result: RecognitionResult | null
+  screening?: RecognitionScreening | null
   errorCode: string | null
 }
 interface Session {
@@ -33,6 +40,7 @@ const messages: Record<string, string> = {
   TASK_NOT_FOUND: '这条记录不存在，或不属于当前会话。',
   TASK_BUSY: '图片仍在处理中，完成后才能删除。',
   MODEL_NOT_CONFIGURED: '识别模型尚未就绪，请稍后重试。',
+  SCREENING_NOT_CONFIGURED: '滑坡初筛服务尚未就绪，请稍后重试。',
   RECOGNITION_NOT_CONFIGURED: '识别记录服务尚未就绪。',
   WORKER_UNAVAILABLE: '识别服务暂时不可用。',
   INVALID_IMAGE: '图片无法读取，请重新选择 PNG 或 JPEG。',
@@ -140,10 +148,20 @@ export async function deleteRecognition(id: string) {
   await request(`/api/recognition/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 export function taskLabel(task: RecognitionTask) {
+  if (task.status === 'completed') {
+    if (task.screening) {
+      return {
+        possible_landslide: '疑似滑坡 · 待复核',
+        no_landslide: '未检出明显滑坡',
+        unsupported_image: '影像不适用',
+        inconclusive: '初筛结果不确定',
+      }[task.screening.decision]
+    }
+    return task.result ? '旧记录 · 未初筛' : '识别完成'
+  }
   return {
     queued: '排队中',
     running: '正在识别',
-    completed: '识别完成 · 待复核',
     failed: '识别未完成',
   }[task.status]
 }

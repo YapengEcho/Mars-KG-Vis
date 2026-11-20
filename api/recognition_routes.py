@@ -1,5 +1,6 @@
 """Authenticated, device-scoped classification tasks and history."""
 import json
+from functools import partial
 from typing import Literal
 
 import anyio
@@ -13,6 +14,7 @@ from api.classifier import prepare_image
 from api.detector import MAX_DETECTION_PIXELS, MAX_DETECTION_SIDE, prepare_detection
 from api.image_policy import MAX_UPLOAD_BYTES, ImageInputError, decode_image
 from api.recognition_store import QueueFull
+from api.recognition_access import ScreeningSummary, authenticate_owner, bind_task_context, get_owned_task
 
 router = APIRouter(tags=['recognition'])
 bearer = HTTPBearer(auto_error=False)
@@ -53,6 +55,7 @@ class Task(BaseModel):
     preprocessingVersion: str
     input: InputMetadata
     result: Result | None
+    screening: ScreeningSummary | None = None
     errorCode: str | None
     imageUrl: str
 
@@ -116,12 +119,16 @@ def get_worker(request: Request):
 
 
 def owner(request: Request, credential: HTTPAuthorizationCredentials | None = Depends(bearer)):
-    worker = get_worker(request)
-    identity = worker.store.authenticate(credential.credentials if credential else None)
-    if identity is None:
-        raise HTTPException(401, detail={'code': 'AUTH_REQUIRED', 'message': 'A valid device token is required.'},
-                            headers={'WWW-Authenticate': 'Bearer'})
-    return identity
+    worker = request.app.state.recognition
+    return authenticate_owner(worker.store if worker else None, credential.credentials if credential else None)
+
+
+def agent_task_context(request: Request, credential: HTTPAuthorizationCredentials | None, task_id: str | None):
+    if task_id is None:
+        return None  # Public catalog/chat does not require recognition storage.
+    worker = request.app.state.recognition
+    return bind_task_context(worker.store if worker else None,
+                             credential.credentials if credential else None, task_id)
 
 
 @router.post('/api/recognition/sessions', response_model=Session, status_code=201)
@@ -139,12 +146,12 @@ async def classify(request: Request, credential: HTTPAuthorizationCredentials | 
     worker = request.app.state.recognition
     if worker is None or worker.model is None:
         fail('MODEL_NOT_CONFIGURED', 503, 'Classification model is not configured.')
+    if worker.binary_screen is None:
+        fail('SCREENING_NOT_CONFIGURED', 503, 'The landslide screening model is not configured.')
     if not worker.available:
         fail('WORKER_UNAVAILABLE', 503, 'Classification worker is unavailable.')
-    identity = await anyio.to_thread.run_sync(worker.store.authenticate, credential.credentials if credential else None)
-    if identity is None:
-        raise HTTPException(401, detail={'code': 'AUTH_REQUIRED', 'message': 'A valid device token is required.'},
-                            headers={'WWW-Authenticate': 'Bearer'})
+    identity = await anyio.to_thread.run_sync(authenticate_owner, worker.store,
+                                            credential.credentials if credential else None)
     async with request.form(max_files=1, max_fields=1) as form:
         if any(key not in ('file', 'roi') for key in form):
             fail('INVALID_FORM', 422, 'Only file and roi fields are accepted.')
@@ -167,12 +174,14 @@ async def classify(request: Request, credential: HTTPAuthorizationCredentials | 
     except ValueError as error:
         fail('INVALID_ROI', 422, str(error))
     try:
-        task_id = await anyio.to_thread.run_sync(worker.store.enqueue, identity, prepared, worker.model.version)
+        task_id = await anyio.to_thread.run_sync(
+            partial(worker.store.enqueue, identity, prepared, worker.model.version, screen_input=payload)
+        )
     except QueueFull:
         raise HTTPException(429, detail={'code': 'QUEUE_FULL', 'message': 'Try again after pending tasks finish.'},
                             headers={'Retry-After': '5'})
     worker.wake.set()
-    task = await anyio.to_thread.run_sync(worker.store.get, identity, task_id)
+    task = await anyio.to_thread.run_sync(get_owned_task, worker.store, identity, task_id)
     return JSONResponse(task, status_code=202, headers={'Location': f'/api/recognition/tasks/{task_id}'})
 
 
@@ -223,10 +232,7 @@ def tasks(request: Request, identity=Depends(owner), page: int = Query(1, ge=1),
 
 @router.get('/api/recognition/tasks/{task_id}', response_model=Task | DetectionTask)
 def task(task_id: str, request: Request, identity=Depends(owner)):
-    found = get_worker(request).store.get(identity, task_id)
-    if found is None:
-        fail('TASK_NOT_FOUND', 404, 'Task was not found.')
-    return found
+    return get_owned_task(get_worker(request).store, identity, task_id)
 
 
 @router.get('/api/recognition/tasks/{task_id}/image', response_class=Response,
@@ -258,7 +264,8 @@ class RecognitionBoundary:
     async def __call__(self, scope, receive, send):
         path = scope.get('path', '')
         upload = path in ('/api/landslide/classify', '/api/landslide/detect')
-        recognition = upload or path.startswith('/api/recognition/')
+        recognition = (upload or path.startswith('/api/recognition/')
+                       or path in ('/api/agent/chat', '/api/agent/chat/stream'))
         if scope['type'] != 'http' or not recognition:
             return await self.app(scope, receive, send)
 

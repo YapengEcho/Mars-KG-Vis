@@ -15,6 +15,7 @@ export interface AtlasTypeEntry {
   deposits: string
   flow: string
   recognize: string[]
+  catalogNote?: string
   confusable: string
   citations: AtlasCitation[]
   caseIds: string[]
@@ -64,7 +65,11 @@ function text(value: unknown, what: string): string {
   return value
 }
 function texts(value: unknown, what: string): string[] {
-  if (!Array.isArray(value) || !value.length || value.some((v) => typeof v !== 'string' || !v.trim()))
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.some((v) => typeof v !== 'string' || !v.trim())
+  )
     throw new Error(`图鉴内容缺少${what}`)
   return value as string[]
 }
@@ -113,6 +118,7 @@ export function parseAtlasContent(value: unknown): AtlasContent {
     text(entry.flow, '流动特征')
     text(entry.confusable, '易混类型说明')
     texts(entry.recognize, '识别要点')
+    if (entry.catalogNote !== undefined) text(entry.catalogNote, '编目说明')
     citations(entry.citations, '类型引用')
     texts(entry.caseIds, '类型案例')
   }
@@ -188,6 +194,11 @@ export function casesOfType(type: SlideType): AtlasCase[] {
 export function caseById(id: string): AtlasCase | undefined {
   return atlasContent.cases.find((item) => item.id === id)
 }
+
+export function caseTitle(item: AtlasCase): string {
+  const suffix = ` · ${item.landslideId}`
+  return item.title.endsWith(suffix) ? item.title.slice(0, -suffix.length) : item.title
+}
 /** Case page join: the catalogue record is looked up by its landslide id. */
 export function caseRecord(item: AtlasCase, records: Slide[]): Slide | undefined {
   return findSlide(records, item.landslideId)
@@ -226,7 +237,9 @@ export function atlasSearchText(content: AtlasContent = atlasContent): string[] 
       [
         `类型对比 ${item.title}`,
         item.why,
-        ...item.rows.map((row) => `${row.dimension}：${item.left} ${row.left} / ${item.right} ${row.right}`),
+        ...item.rows.map(
+          (row) => `${row.dimension}：${item.left} ${row.left} / ${item.right} ${row.right}`,
+        ),
       ].join('\n'),
     )
   }

@@ -15,7 +15,6 @@ function readSaved(): string[] {
 }
 const state = reactive({
   catalog: publicCatalog as Catalog,
-  selectedId: '' as string,
   savedIds: readSaved(),
   error: '',
   storageError: '',
@@ -23,7 +22,6 @@ const state = reactive({
 })
 export const atlas = {
   state,
-  selected: computed(() => state.catalog.records.find((r) => r.id === state.selectedId)),
   saved: computed(() =>
     [...state.savedIds]
       .reverse()
@@ -43,12 +41,6 @@ export const atlas = {
     } catch {
       state.storageError = '当前设备无法保存收藏，请检查存储权限。'
     }
-  },
-  select(id: string) {
-    state.selectedId = id
-  },
-  dismiss() {
-    state.selectedId = ''
   },
   isSaved(id: string) {
     return state.savedIds.includes(id)

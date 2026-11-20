@@ -29,6 +29,14 @@ class Detector:
         return [DetectionBox(3, 4, 15, 20, .8)]
 
 
+class ScreeningModel:
+    version = 'synthetic-screen'
+    threshold = .5
+
+    def predict(self, image, roi=None):
+        return .8
+
+
 def image(size=(32, 24)):
     stream = BytesIO()
     Image.new('RGB', size, 'gray').save(stream, format='PNG')
@@ -52,14 +60,15 @@ def wait_for_task(client, url, headers):
 
 @pytest.fixture(autouse=True)
 def local_config(monkeypatch):
-    for key in ('MARS_CLASSIFIER_MANIFEST', 'MARS_DETECTOR_WEIGHTS', 'MARS_RECOGNITION_DB', 'MARS_DB_PATH',
-                'MARS_CATALOG_PATH'):
+    for key in ('MARS_CLASSIFIER_MANIFEST', 'MARS_BINARY_SCREEN_MANIFEST', 'MARS_DETECTOR_WEIGHTS',
+                'MARS_RECOGNITION_DB', 'MARS_DB_PATH', 'MARS_CATALOG_PATH'):
         monkeypatch.delenv(key, raising=False)
 
 
 def test_detection_task_isolation_history_and_box_contract(tmp_path):
     db = tmp_path / 'jobs.db'
-    with TestClient(create_app(classifier=Classifier(), detector=Detector(), recognition_database=db)) as client:
+    with TestClient(create_app(classifier=Classifier(), binary_screen=ScreeningModel(), detector=Detector(),
+                               recognition_database=db)) as client:
         capability = client.get('/api/capabilities').json()['detection']
         assert capability['available'] and capability['maxImageSide'] == 2048
         a, b = credential(client), credential(client)
@@ -69,6 +78,7 @@ def test_detection_task_isolation_history_and_box_contract(tmp_path):
         url = submitted.headers['location']
         task = wait_for_task(client, url, a)
         assert task['kind'] == 'detect' and task['status'] == 'completed'
+        assert 'screening' not in task
         assert task['modelVersion'] == Detector.version
         assert (task['input']['width'], task['input']['height']) == (32, 24)
         result = task['result']
@@ -89,12 +99,39 @@ def test_detection_task_isolation_history_and_box_contract(tmp_path):
         classification = client.post('/api/landslide/classify', headers=a, files=image())
         assert classification.status_code == 202
         classified = wait_for_task(client, classification.headers['location'], a)
+        assert classified['screening']['decision'] == 'possible_landslide'
         assert client.get('/api/recognition/tasks', headers=a).json()['items'] == [classified]
     with TestClient(create_app(recognition_database=db)) as client:
         assert not client.get('/api/capabilities').json()['detection']['available']
         assert client.get(url, headers=a).json() == task
         assert client.delete(url, headers=a).status_code == 204
         assert client.get(url, headers=a).status_code == 404
+
+
+def test_detection_works_without_single_image_screening(tmp_path):
+    with TestClient(create_app(classifier=Classifier(), detector=Detector(),
+                               recognition_database=tmp_path / 'jobs.db')) as client:
+        capabilities = client.get('/api/capabilities').json()
+        assert capabilities['detection']['available']
+        assert not capabilities['classifier']['available']
+        owner, stranger = credential(client), credential(client)
+        classified = client.post('/api/landslide/classify', headers=owner, files=image())
+        assert classified.status_code == 503
+        assert classified.json()['detail']['code'] == 'SCREENING_NOT_CONFIGURED'
+        detection = client.post('/api/landslide/detect', headers=owner, files=image())
+        assert detection.status_code == 202
+        body = {
+            'recognitionTaskId': detection.json()['taskId'],
+            'messages': [{'role': 'user', 'content': '请查看这条识别记录'}],
+        }
+        for endpoint in ('/api/agent/chat', '/api/agent/chat/stream'):
+            response = client.post(endpoint, headers=stranger, json=body)
+            assert response.status_code == 404
+            assert response.json()['detail']['code'] == 'TASK_NOT_FOUND'
+            response = client.post(endpoint, headers=owner, json=body)
+            assert response.status_code == 422 and response.headers['cache-control'] == 'no-store'
+            assert response.json()['detail']['code'] == 'UNSUPPORTED_TASK_KIND'
+        assert wait_for_task(client, detection.headers['location'], owner)['status'] == 'completed'
 
 
 @pytest.mark.parametrize('raise_error', [False, True])

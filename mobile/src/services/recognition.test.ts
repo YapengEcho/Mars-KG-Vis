@@ -7,6 +7,8 @@ import {
   getRecognition,
   deleteRecognition,
   resetRecognitionSession,
+  taskLabel,
+  type RecognitionTask,
 } from './recognition'
 const memory = new Map<string, string>()
 const storage = {
@@ -27,6 +29,54 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal('sessionStorage', storage)
   vi.stubGlobal('fetch', fetcher)
+})
+
+describe('two-stage recognition outcomes', () => {
+  const completed: RecognitionTask = {
+    taskId: 'task-1',
+    status: 'completed',
+    createdAt: '2026-01-01T00:00:00Z',
+    finishedAt: '2026-01-01T00:00:01Z',
+    modelVersion: 'type-model',
+    preprocessingVersion: 'v1',
+    errorCode: null,
+    result: null,
+  }
+
+  it('labels each initial screening outcome', () => {
+    const outcomes = [
+      ['possible_landslide', '疑似滑坡 · 待复核'],
+      ['no_landslide', '未检出明显滑坡'],
+      ['unsupported_image', '影像不适用'],
+      ['inconclusive', '初筛结果不确定'],
+    ] as const
+    for (const [decision, label] of outcomes) {
+      expect(
+        taskLabel({
+          ...completed,
+          screening: { decision, score: null, threshold: null, modelVersion: null },
+        }),
+      ).toBe(label)
+    }
+  })
+
+  it('does not treat historical type-only results as confirmed slides', () => {
+    expect(
+      taskLabel({
+        ...completed,
+        result: {
+          prediction: 'CL',
+          probabilities: { SL: 0.1, SP: 0.1, FL: 0.1, CL: 0.7 },
+          confidence: 0.7,
+          uncertain: true,
+          reviewReasons: ['MODEL_REQUIRES_HUMAN_REVIEW'],
+          scoresCalibrated: false,
+          modelVersion: 'type-model',
+          preprocessingVersion: 'v1',
+        },
+      }),
+    ).toBe('旧记录 · 未初筛')
+  })
 })
 describe('device-scoped recognition', () => {
   it('retains one session, submits multipart, and uses authenticated reads and deletes', async () => {
