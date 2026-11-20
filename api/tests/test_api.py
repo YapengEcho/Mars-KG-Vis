@@ -81,6 +81,7 @@ def test_detail_preserves_mars_coordinates_and_unknown_values(client):
     record = response.json()
     assert (record["longitude"], record["latitude"]) == (-169.5, -29)
     assert record["areaKm2"] is None
+    assert record["perimeterKm"] is None
     assert record["imageUrl"] is None
     assert record["isDemo"] is True
     missing = client.get("/api/landslides/absent")
@@ -157,6 +158,8 @@ def test_catalog_environment_selection(monkeypatch, catalog_file):
         ("sourceId", True),
         ("sourceId", "12"),
         ("sourceId", 1.5),
+        ("perimeterKm", -1),
+        ("perimeterKm", "12"),
         ("source.url", "http://example.com/source"),
         ("imageUrl", "//example.com/image.png"),
         ("imageUrl", "http://example.com/image.png"),
@@ -180,9 +183,11 @@ def test_https_and_same_origin_assets_and_nonnegative_source_id(catalog_file):
     catalog["records"][0]["sourceId"] = 0
     catalog["records"][0]["source"]["url"] = "https://example.com/source"
     catalog["records"][0]["imageUrl"] = "/images/example.png"
+    catalog["records"][0]["perimeterKm"] = 23.125
     catalog["records"][1]["imageUrl"] = "https://example.com/image.png"
     catalog_file.write_text(json.dumps(catalog), encoding="utf-8")
     validated = load_catalog(catalog_file)
     assert validated.records[0].sourceId == 0
     assert validated.records[0].imageUrl == "/images/example.png"
+    assert validated.records[0].perimeterKm == 23.125
     assert validated.records[1].imageUrl == "https://example.com/image.png"

@@ -8,6 +8,7 @@ from PIL import Image
 import pytest
 
 from api.main import create_app
+from api.schemas import Catalog
 from api.sqlite_store import build_database,load_sqlite_catalog
 from api.image_policy import decode_image,ImageInputError,MAX_UPLOAD_BYTES
 
@@ -16,13 +17,15 @@ DEMO=Path(__file__).resolve().parents[2]/'examples/catalog.demo.json'
 
 def test_sqlite_matches_existing_catalog_and_query_statistics(tmp_path):
     payload=json.loads(DEMO.read_text(encoding='utf-8'));db=tmp_path/'catalog.sqlite3'
+    payload['records'][0]['perimeterKm'] = 12.5
+    expected = Catalog.model_validate(payload).model_dump()
     build_database(db,payload)
-    assert load_sqlite_catalog(db).model_dump()==payload
+    assert load_sqlite_catalog(db).model_dump()==expected
     with TestClient(create_app(database_path=db)) as client:
-        assert client.get('/api/catalog').json()==payload
+        assert client.get('/api/catalog').json()==expected
         query={'type':'SP','q':'demo'}
         assert client.get('/api/landslides',params=query).json()['total']==client.get('/api/stats',params=query).json()['total']
-        assert client.get('/api/landslides/'+payload['records'][0]['id']).json()==payload['records'][0]
+        assert client.get('/api/landslides/'+payload['records'][0]['id']).json()==expected['records'][0]
         assert client.get('/api/landslides/absent').status_code==404
 
 
@@ -48,7 +51,8 @@ def test_duplicate_raw_ids_do_not_create_partial_database(tmp_path):
 
 def test_explicit_catalog_overrides_database_environment(tmp_path,monkeypatch):
     monkeypatch.setenv('MARS_DB_PATH',str(tmp_path/'absent.sqlite3'))
-    with TestClient(create_app(DEMO)) as client:assert client.get('/api/catalog').json()==json.loads(DEMO.read_text(encoding='utf-8'))
+    expected = Catalog.model_validate_json(DEMO.read_text(encoding='utf-8')).model_dump()
+    with TestClient(create_app(DEMO)) as client:assert client.get('/api/catalog').json()==expected
     with pytest.raises(ValueError):create_app(DEMO,database_path=tmp_path/'other.sqlite3')
 
 

@@ -33,10 +33,11 @@ def build_catalog(
     coordinate_system: str,
     version: str,
     limit: int | None = None,
+    include_perimeter_km: bool = False,
 ) -> dict[str, Any]:
     """Preserve source IDs and class codes without inferring geology or coordinates."""
-    if coordinate_system != "planetocentric":
-        raise ValueError("Explicit planetocentric coordinates are required; no conversion is performed")
+    if coordinate_system not in ("planetocentric", "unverified"):
+        raise ValueError("Explicit planetocentric or unverified latitude is required")
     if not isinstance(rows, list) or not rows:
         raise ValueError("Input must be a non-empty JSON array")
     if not source_title.strip() or not version.strip():
@@ -81,6 +82,13 @@ def build_catalog(
             area = number(area, "area", index)
             if area < 0:
                 raise ValueError(f"Record {index}: area must be non-negative or null")
+        perimeter = None
+        if include_perimeter_km:
+            value = row.get("perimeter")
+            if value is not None and value != "":
+                perimeter = number(value, "perimeter", index)
+                if perimeter < 0:
+                    raise ValueError(f"Record {index}: perimeter must be non-negative or null")
         name = row.get("name")
         if name is not None and not isinstance(name, str):
             raise ValueError(f"Record {index}: name must be a string or null")
@@ -93,7 +101,7 @@ def build_catalog(
             raise ValueError(f"Record {index}: desc must be a string or null")
 
         if limit is None or len(records) < limit:
-            records.append({
+            record = {
                 "id": identifier,
                 "sourceId": source_id,
                 "name": name,
@@ -105,12 +113,18 @@ def build_catalog(
                 "imageUrl": None,
                 "source": {"title": source_title.strip(), "url": None},
                 "isDemo": False,
-            })
+            }
+            if include_perimeter_km:
+                record["perimeterKm"] = perimeter
+            records.append(record)
 
+    system = dict(COORDINATE_SYSTEM)
+    if coordinate_system == "unverified":
+        system["latitude"] = "unverified, degrees"
     return {
         "version": version.strip(),
-        "mode": "catalog",
-        "coordinateSystem": dict(COORDINATE_SYSTEM),
+        "mode": "reference" if coordinate_system == "unverified" else "catalog",
+        "coordinateSystem": system,
         "records": records,
     }
 
@@ -123,6 +137,7 @@ def export_catalog(
     coordinate_system: str,
     version: str,
     limit: int | None = None,
+    include_perimeter_km: bool = False,
 ) -> dict[str, Any]:
     input_path = input_path.expanduser().resolve()
     output_path = output_path.expanduser().resolve()
@@ -135,6 +150,7 @@ def export_catalog(
         coordinate_system=coordinate_system,
         version=version,
         limit=limit,
+        include_perimeter_km=include_perimeter_km,
     )
     payload = json.dumps(catalog, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,15 +174,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", type=Path, required=True, help="Source JSON array; never selected automatically")
     parser.add_argument("--output", type=Path, required=True, help="Destination catalog JSON")
     parser.add_argument("--source-title", required=True, help="Verified source name for exported records")
-    parser.add_argument("--coordinate-system", choices=["planetocentric"], required=True,
-                        help="Explicitly confirm east-positive longitude and planetocentric latitude in degrees")
+    parser.add_argument("--coordinate-system", choices=["planetocentric", "unverified"], required=True,
+                        help="Declare latitude convention; unverified exports a reference catalog")
     parser.add_argument("--limit", type=int, help="Maximum exported records, after validating the entire input")
+    parser.add_argument(
+        "--include-perimeter-km", action="store_true",
+        help="Export the source perimeter only after verifying that its unit is kilometres",
+    )
     parser.add_argument("--version", default=date.today().isoformat(), help="Catalog version; defaults to today's date")
     args = parser.parse_args(argv)
     try:
         catalog = export_catalog(
             args.input, args.output, source_title=args.source_title,
             coordinate_system=args.coordinate_system, version=args.version, limit=args.limit,
+            include_perimeter_km=args.include_perimeter_km,
         )
     except (OSError, ValueError) as error:
         parser.error(str(error))

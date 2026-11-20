@@ -12,6 +12,19 @@ class ToolResult:
     records: list[Slide] = field(default_factory=list)
     citations: list[Citation] = field(default_factory=list)
     actions: list[AgentAction] = field(default_factory=list)
+
+    @property
+    def model_payload(self) -> dict:
+        """Catalog facts for a reply, without storage and coordinate-validation metadata."""
+        facts = {
+            key: value for key, value in self.payload.items()
+            if key not in {"dataMode", "coordinateSystem", "version"}
+        }
+        if self.payload.get("dataMode") == "demo":
+            facts["isDemo"] = True
+        return facts
+
+
 def _error(name: str, args: dict, message: str) -> ToolResult:
     return ToolResult(name=name, args=args, ok=False, payload={"error": message})
 def _brief(record: Slide) -> dict:
@@ -32,6 +45,19 @@ def _source_citation(record: Slide) -> Citation:
         title=record.source.title,
         url=record.source.url,
     )
+
+
+def _find_record(catalog: Catalog, slide_id: str) -> Slide | None:
+    record = next((item for item in catalog.records if item.id.casefold() == slide_id.casefold()), None)
+    if record is not None:
+        return record
+    digits = slide_id.casefold().removeprefix("ls_")
+    if not digits.isascii() or not digits.isdecimal():
+        return None
+    number = digits.lstrip("0") or "0"
+    return next((item for item in catalog.records if str(item.sourceId) == number), None)
+
+
 TOOL_SPECS = [
     {
         "type": "function",
@@ -61,7 +87,7 @@ TOOL_SPECS = [
             "description": "按编号获取单条滑坡记录的完整详情。",
             "parameters": {
                 "type": "object",
-                "properties": {"id": {"type": "string", "description": "滑坡记录编号"}},
+                "properties": {"id": {"type": "string", "description": "原始数字编号或目录 ID，如 493 或 ls_0493"}},
                 "required": ["id"],
             },
         },
@@ -70,7 +96,7 @@ TOOL_SPECS = [
         "type": "function",
         "function": {
             "name": "get_stats",
-            "description": "按可选条件统计滑坡总数与各类型数量。",
+            "description": "按可选条件统计滑坡总数与各类型数量。查询全目录时省略筛选参数。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -116,7 +142,7 @@ TOOL_SPECS = [
             "description": "在探索页地图（火星球）上定位并聚焦指定编号的滑坡。",
             "parameters": {
                 "type": "object",
-                "properties": {"id": {"type": "string"}},
+                "properties": {"id": {"type": "string", "description": "原始数字编号或目录 ID，如 493 或 ls_0493"}},
                 "required": ["id"],
             },
         },
@@ -126,6 +152,9 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
     args = args or {}
     if not isinstance(args, dict):
         return _error(name, {}, "工具参数必须为对象。")
+    if name == "get_stats":
+        args = {key: value for key, value in args.items()
+                if key not in ("bbox", "q", "type") or not isinstance(value, str) or value.strip()}
     if name in ("search_catalog", "get_stats"):
         if args.get("type") is not None and args["type"] not in ("SL", "SP", "FL", "CL"):
             return _error(name, args, "未知滑坡类型。")
@@ -157,19 +186,30 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
             records=page,
             citations=[_source_citation(record) for record in page],
         )
-    if name == "get_slide":
-        slide_id = str(args.get("id", ""))
-        for record in catalog.records:
-            if record.id == slide_id:
-                return ToolResult(
-                    name=name,
-                    args=args,
-                    ok=True,
-                    payload={**_brief(record), "dataMode": catalog.mode, "coordinateSystem": catalog.coordinateSystem.model_dump()},
-                    records=[record],
-                    citations=[_source_citation(record)],
-                )
-        return _error(name, args, f"未找到编号为 {slide_id} 的记录。")
+    if name in ("get_slide", "locate_slide"):
+        slide_id = str(args.get("id", "")).strip()
+        record = _find_record(catalog, slide_id)
+        if record is None:
+            return _error(name, args, f"当前目录中未找到编号 {slide_id}。")
+        metadata = {"dataMode": catalog.mode, "coordinateSystem": catalog.coordinateSystem.model_dump()}
+        if name == "locate_slide":
+            return ToolResult(
+                name=name,
+                args=args,
+                ok=True,
+                payload={"located": record.id, **metadata},
+                records=[record],
+                citations=[_source_citation(record)],
+                actions=[AgentAction(type="locate", slideId=record.id)],
+            )
+        return ToolResult(
+            name=name,
+            args=args,
+            ok=True,
+            payload={**_brief(record), **metadata},
+            records=[record],
+            citations=[_source_citation(record)],
+        )
     if name == "get_stats":
         try:
             matched = filter_records(catalog, args.get("q"), args.get("type"), parse_bbox(args.get("bbox")))
@@ -221,15 +261,4 @@ def execute_tool(name: str, args: dict, catalog: Catalog, retriever) -> ToolResu
                 for doc in docs
             ],
         )
-    if name == "locate_slide":
-        slide_id = str(args.get("id", ""))
-        if any(record.id == slide_id for record in catalog.records):
-            return ToolResult(
-                name=name,
-                args=args,
-                ok=True,
-                payload={"located": slide_id, "dataMode": catalog.mode, "coordinateSystem": catalog.coordinateSystem.model_dump()},
-                actions=[AgentAction(type="locate", slideId=slide_id)],
-            )
-        return _error(name, args, f"未找到编号为 {slide_id} 的记录，无法定位。")
     return _error(name, args, f"未知工具：{name}")

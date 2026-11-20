@@ -1,145 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ArrowLeft, ArrowRight, BookOpen, Bookmark, Crosshair, ExternalLink } from '@lucide/vue'
-import { useRouter } from 'vue-router'
-import { atlas } from '../stores/atlas'
-import { atlasContent, caseById, caseRecord, casesOfType, typeEntry } from '../lib/atlas'
-import { coordinateLabel, typeInfo } from '../types'
-import { sampleById } from '../lib/samples'
-import { coordinateStatus } from '../lib/coordinateStatus'
-import ZoomableImage from '../components/ZoomableImage.vue'
+import { caseById } from '../lib/atlas'
+import CatalogRecordView from './CatalogRecordView.vue'
 
 const props = defineProps<{ id: string }>()
-const router = useRouter()
-const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
 const item = computed(() => caseById(props.id))
-const sample = computed(() => (item.value ? sampleById(item.value.landslideId) : undefined))
-const entry = computed(() => (item.value ? typeEntry(item.value.type) : undefined))
-const record = computed(() =>
-  item.value ? caseRecord(item.value, atlas.state.catalog.records) : undefined,
-)
-const siblings = computed(() => {
-  if (!item.value) return []
-  const list = casesOfType(item.value.type)
-  const index = list.findIndex((c) => c.id === item.value?.id)
-  return [list[index - 1], list[index + 1]].filter((c) => Boolean(c))
-})
-function locate() {
-  const id = record.value?.id
-  if (!id) return
-  atlas.dismiss()
-  void router.push({ path: '/', query: { focus: id, visit: String(Date.now()) } })
-}
 </script>
+
 <template>
-  <section class="content-view">
-    <RouterLink :to="item ? `/atlas/type/${item.type}` : '/atlas'" class="text-button back-link"
-      ><ArrowLeft :size="16" />{{
-        item ? `返回${typeInfo[item.type].name}图鉴` : '返回图鉴'
-      }}</RouterLink
-    >
-    <p v-if="!item" class="notice">没有这个案例：{{ props.id }}</p>
-    <template v-else-if="entry">
-      <div class="page-heading atlas-heading">
-        <span class="eyebrow">{{ item.type }} · {{ entry.name }} · {{ item.tile }}</span>
-        <h1>{{ item.title }}</h1>
-        <p>{{ item.subtitle }}</p>
-      </div>
-
-      <div class="case-meta">
-        <span class="type-badge" :style="{ color: typeInfo[item.type].color }">
-          {{ item.type }} / {{ entry.name }}
-        </span>
-        <span class="data-badge">{{ item.region }}</span>
-        <span class="data-badge">{{ item.previewScale }}</span>
-        <span v-for="tag in item.tags" :key="tag" class="data-badge">{{ tag }}</span>
-      </div>
-
-      <div class="section-heading"><h2>观察要点</h2></div>
-      <div v-if="sample" class="sample-media">
-        <ZoomableImage :src="sample.imageUrl" :alt="item.title" />
-      </div>
-      <p v-else class="notice">
-        暂无公开影像：仓库不收录影像资源，本案例以文字说明与目录记录为准。
-      </p>
-      <RouterLink v-if="sample" class="text-button" :to="`/samples/${sample.id}`"
-        >查看影像 →</RouterLink
-      >
-      <ol class="atlas-points case-points">
-        <li v-for="point in item.observations" :key="point">{{ point }}</li>
-      </ol>
-
-      <div class="section-heading"><h2>目录记录</h2></div>
-      <dl v-if="record" class="atlas-facts record-facts">
-        <div>
-          <dt>编号</dt>
-          <dd>{{ record.id }} · 原始编号 {{ record.sourceId ?? '—' }}</dd>
-        </div>
-        <div>
-          <dt>
-            {{ coordinates.label }}
-          </dt>
-          <dd>{{ coordinateLabel(record.longitude, record.latitude) }}</dd>
-        </div>
-        <div>
-          <dt>面积</dt>
-          <dd>
-            {{ record.areaKm2 === null ? '暂无可靠记录' : `${record.areaKm2.toFixed(2)} km²` }}
-          </dd>
-        </div>
-        <div>
-          <dt>资料来源</dt>
-          <dd>
-            <a
-              v-if="record.source.url?.startsWith('https://')"
-              :href="record.source.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              >{{ record.source.title }} <ExternalLink :size="12" /></a
-            ><span v-else>{{ record.source.title }}</span>
-          </dd>
-        </div>
-      </dl>
-      <p v-else class="notice">{{ item.landslideId }} 尚未包含在公开目录中。</p>
-      <p v-if="record && coordinates.note" class="muted">{{ coordinates.note }}</p>
-
-      <div class="case-actions">
-        <button class="primary-button" :disabled="!record" @click="locate">
-          <Crosshair :size="18" />定位到火星球
-        </button>
-        <button
-          class="secondary-button"
-          :disabled="!record"
-          :aria-pressed="record ? atlas.isSaved(record.id) : false"
-          @click="record && atlas.toggleSaved(record.id)"
-        >
-          <Bookmark
-            :size="17"
-            :fill="record && atlas.isSaved(record.id) ? 'currentColor' : 'none'"
-          />
-          {{ record && atlas.isSaved(record.id) ? '已收藏' : '收藏这一条' }}
-        </button>
-        <RouterLink class="text-button" :to="`/atlas/type/${item.type}`">同类案例</RouterLink>
-      </div>
-
-      <div class="section-heading"><h2>引用与出处</h2></div>
-      <ul class="citation-list">
-        <li>
-          <BookOpen :size="15" /><span>{{ item.citationLocator }}</span>
-        </li>
-        <li>
-          <BookOpen :size="15" /><span
-            >{{ atlasContent.sourceDocument.title }}（{{ atlasContent.sourceDocument.note }}）</span
-          >
-        </li>
-      </ul>
-
-      <nav class="case-nav" aria-label="同类案例切换">
-        <RouterLink v-for="(sib, i) in siblings" :key="sib!.id" :to="`/atlas/case/${sib!.id}`">
-          <component :is="i === 0 ? ArrowLeft : ArrowRight" :size="15" />
-          <span>{{ sib!.title }}</span>
-        </RouterLink>
-      </nav>
-    </template>
+  <CatalogRecordView v-if="item" :id="item.landslideId" :case-key="item.id" />
+  <section v-else class="content-view">
+    <RouterLink to="/atlas" class="text-button back-link">返回图鉴</RouterLink>
+    <p class="notice">没有这个案例。</p>
   </section>
 </template>

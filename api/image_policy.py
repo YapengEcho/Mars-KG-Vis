@@ -8,6 +8,15 @@ MAX_IMAGE_PIXELS=4096*4096
 MAX_IMAGE_SIDE=8192
 
 
+def is_ctx_grayscale(image: Image.Image) -> bool:
+    """Accept grayscale CTX input with tolerance for small color artifacts."""
+    sample = image.resize((min(128, image.width), min(128, image.height)), Image.Resampling.NEAREST)
+    sample = sample.convert('RGB')
+    rgb = sample.tobytes()
+    colored = sum(max(r, g, b) - min(r, g, b) > 16 for r, g, b in zip(rgb[::3], rgb[1::3], rgb[2::3]))
+    return colored * 100 <= sample.width * sample.height
+
+
 class ImageInputError(ValueError):
     def __init__(self,code,status,message):
         super().__init__(message);self.code=code;self.status=status

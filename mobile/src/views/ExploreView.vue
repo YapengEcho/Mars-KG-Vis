@@ -1,19 +1,29 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { ChevronRight, LocateFixed, MapPin, Minus, Plus, Search, Shapes, X } from '@lucide/vue'
+import {
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  Crosshair,
+  LocateFixed,
+  MapPin,
+  Minus,
+  Plus,
+  Search,
+  Shapes,
+  X,
+} from '@lucide/vue'
 import { useRoute } from 'vue-router'
 import MarsGlobe from '../components/MarsGlobe.vue'
-import SlideCard from '../components/SlideCard.vue'
-import CardRail from '../components/CardRail.vue'
 import { atlas } from '../stores/atlas'
-import { crowdedSlideIds, filterSlides, findSlide, nearestSlide, neighborsOf } from '../lib/catalog'
-import { coordinateStatus } from '../lib/coordinateStatus'
+import { filterSlides, findSlide, nearestSlide, neighborsOf } from '../lib/catalog'
 import { parseSlideGeometry, type Ring } from '../lib/geometry'
 import { apiBase, fetchSlideGeometry } from '../services/api'
 import { formatMarsCoordinate, isMarsCoordinate } from '../lib/marsCoordinates'
-import { slideTypes, typeInfo } from '../types'
+import { coordinateLabel, slideTypes, typeInfo } from '../types'
 import type { Slide, SlideType } from '../types'
-const pageSize = 20
+const pageSize = 5
+const formatCount = new Intl.NumberFormat('zh-CN').format
 /** Records closer than this (degrees) can overlap on the globe. */
 const overlapDegrees = 1.5
 /** A coordinate within this distance is treated as "at" the nearest record. */
@@ -22,13 +32,13 @@ const query = ref('')
 const type = ref<SlideType | ''>('')
 const route = useRoute()
 const globe = ref<InstanceType<typeof MarsGlobe>>()
+const mapStage = ref<HTMLElement>()
 const focusedId = ref('')
 const focusNote = ref('')
-const visibleCount = ref(pageSize)
+const requestedPage = ref(0)
 const basemap = ref<'loading' | 'ready' | 'fallback'>('loading')
 const showGeometry = ref(true)
 const coordinateOpen = ref(false)
-const searchOpen = ref(false)
 const longitudeInput = ref('')
 const latitudeInput = ref('')
 const coordinateNote = ref('')
@@ -39,21 +49,14 @@ const geometryRing = ref<Ring | null>(null)
 const geometryState = ref<'idle' | 'loading' | 'ready' | 'blocked' | 'missing' | 'offline'>('idle')
 let geometryRequest = 0
 const matches = computed(() => filterSlides(atlas.state.catalog.records, query.value, type.value))
-const visible = computed(() => matches.value.slice(0, visibleCount.value))
-const remaining = computed(() => Math.max(0, matches.value.length - visible.value.length))
+const pageCount = computed(() => Math.max(1, Math.ceil(matches.value.length / pageSize)))
+const page = computed(() => Math.min(requestedPage.value, pageCount.value - 1))
+const pageStart = computed(() => page.value * pageSize)
+const visible = computed(() => matches.value.slice(pageStart.value, pageStart.value + pageSize))
 const focusedRecord = computed(
   () =>
     matches.value.find((item) => item.id === focusedId.value) ??
     atlas.state.catalog.records.find((item) => item.id === focusedId.value),
-)
-const crowdedCount = computed(() => crowdedSlideIds(matches.value, overlapDegrees).size)
-const coordinates = computed(() => coordinateStatus(atlas.state.catalog))
-const modeLabel = computed(() =>
-  atlas.state.catalog.mode === 'reference'
-    ? coordinates.value.label
-    : atlas.state.catalog.mode === 'catalog'
-      ? '真实目录'
-      : '演示数据',
 )
 const basemapNote = computed(
   () =>
@@ -71,14 +74,15 @@ const geometryLabel = computed(() => {
     ready: showGeometry.value ? '边界几何：已显示' : '边界几何：已隐藏',
     blocked:
       atlas.state.catalog.mode === 'reference'
-        ? '边界几何：当前参考目录暂不提供叠加'
+        ? '边界几何：当前目录暂不提供叠加'
         : '边界几何：坐标系未确认，暂不叠加',
     missing: '边界几何：当前记录暂无',
     offline: '边界几何：未连接数据服务',
   }[geometryState.value]
 })
 watch([query, type], () => {
-  visibleCount.value = pageSize
+  requestedPage.value = 0
+  focusNote.value = ''
 })
 watch(
   focusedId,
@@ -123,25 +127,20 @@ watch(
   },
   { immediate: true },
 )
-function revealCard(id: string): void {
-  const index = matches.value.findIndex((item) => item.id === id)
-  if (index >= visibleCount.value) visibleCount.value = index + 1
-  void nextTick(() => {
-    document
-      .querySelector(`[data-slide-id="${CSS.escape(id)}"]`)
-      ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  })
+function revealRecord(id: string): void {
+  const index = matches.value.findIndex((record) => record.id === id)
+  if (index >= 0) requestedPage.value = Math.floor(index / pageSize)
 }
 function applyFocus(record: Slide, note?: string): void {
   focusedId.value = record.id
-  focusNote.value = note ?? `已定位 ${record.sourceId ?? record.id} · ${record.name}`
+  focusNote.value = note ?? `已定位 ${record.name}`
   neighbors.value = neighborsOf(matches.value, record.id, overlapDegrees)
   neighborIndex.value = -1
   globe.value?.focusPoint(record.id)
-  revealCard(record.id)
+  revealRecord(record.id)
 }
 /**
- * Filters reset `visibleCount` to the first page, and that watcher runs after
+ * Filters reset the directory to the first page, and that watcher runs after
  * the caller. Wait for it before revealing a record that may sit deeper.
  */
 async function resetFiltersForFocus(): Promise<void> {
@@ -171,46 +170,35 @@ onMounted(async () => {
     globe.value?.focusPoint(atlas.state.catalog.records[0].id)
 })
 function select(id: string) {
-  focusedId.value = id
   const record = matches.value.find((item) => item.id === id)
-  if (record) {
-    focusNote.value = `已定位 ${record.sourceId ?? record.id} · ${record.name}`
-    neighbors.value = neighborsOf(matches.value, id, overlapDegrees)
-    neighborIndex.value = -1
-    revealCard(id)
-  }
-  atlas.select(id)
+  if (record) applyFocus(record)
+}
+function locateFromList(id: string) {
+  select(id)
+  mapStage.value?.scrollIntoView({ block: 'nearest' })
 }
 function cycleNeighbor() {
   const next = neighbors.value[neighborIndex.value + 1]
   if (!next) return
   neighborIndex.value += 1
   focusedId.value = next.id
-  focusNote.value = `已定位 ${next.sourceId ?? next.id} · ${next.name}（相邻点位）`
+  focusNote.value = `已定位 ${next.name}（相邻点位）`
   globe.value?.focusPoint(next.id)
-  revealCard(next.id)
+  revealRecord(next.id)
 }
 function reset() {
   focusedId.value = ''
+  focusNote.value = ''
   neighbors.value = []
   neighborIndex.value = -1
   globe.value?.resetView()
 }
-function loadMore() {
-  visibleCount.value += pageSize
+function turnPage(direction: number) {
+  requestedPage.value = Math.max(0, Math.min(page.value + direction, pageCount.value - 1))
 }
 function clearFilters() {
   query.value = ''
   type.value = ''
-  focusNote.value = ''
-}
-function clearQuery() {
-  query.value = ''
-  focusNote.value = ''
-}
-function toggleType(value: SlideType) {
-  type.value = type.value === value ? '' : value
-  focusNote.value = ''
 }
 function clearCoordinateNote() {
   coordinateNote.value = ''
@@ -254,45 +242,14 @@ async function locateCoordinate() {
       <div>
         <h1>探索火星</h1>
       </div>
-      <button
-        class="icon-button search-toggle"
-        aria-label="搜索与筛选点位"
-        :aria-expanded="searchOpen"
-        @click="searchOpen = !searchOpen"
-      >
-        <Search :size="20" />
-      </button>
-    </div>
-    <div v-show="searchOpen || query || type" class="explore-search">
-      <div class="search-box">
-        <Search :size="19" /><input
-          v-model="query"
-          aria-label="搜索滑坡编号、名称或说明"
-          placeholder="搜索编号、名称或说明"
-          inputmode="search"
-          @input="focusNote = ''"
-        /><button v-if="query" class="icon-button" aria-label="清除搜索" @click="clearQuery">
-          <X :size="16" />
-        </button>
-      </div>
-      <div class="type-filters" role="group" aria-label="类型筛选">
-        <button :class="{ active: !type }" :aria-pressed="!type" @click="clearFilters()">
-          全部</button
-        ><button
-          v-for="t in slideTypes"
-          :key="t"
-          :class="{ active: type === t }"
-          :aria-pressed="type === t"
-          @click="toggleType(t)"
-        >
-          {{ typeInfo[t].name }}
-        </button>
+      <div class="explore-actions">
+        <RouterLink class="secondary-button" to="/statistics">目录统计</RouterLink>
       </div>
     </div>
-    <div class="globe-stage">
+    <div ref="mapStage" class="globe-stage">
       <div class="globe-topline">
-        <span>{{ type ? typeInfo[type].name : '全球视野' }}</span
-        ><span>{{ modeLabel }}</span>
+        <span>{{ type ? typeInfo[type].name : '全球视野' }}</span>
+        <span v-if="atlas.state.catalog.mode === 'demo'">演示数据</span>
       </div>
       <MarsGlobe
         ref="globe"
@@ -366,66 +323,361 @@ async function locateCoordinate() {
         <span>{{ basemapNote }}</span>
       </div>
     </div>
-    <section class="discovery-section">
-      <div class="section-heading">
-        <div>
-          <h2>
-            {{ query || type ? '查询结果' : '滑坡目录' }} <span>{{ matches.length }}</span>
-          </h2>
+    <section class="catalog-panel" aria-labelledby="explore-catalog-title">
+      <div class="catalog-toolbar">
+        <div class="catalog-heading">
+          <h2 id="explore-catalog-title">滑坡目录</h2>
+          <RouterLink class="catalog-atlas-link" to="/atlas">
+            典型案例 <ArrowUpRight :size="15" aria-hidden="true" />
+          </RouterLink>
         </div>
-        <RouterLink to="/atlas#samples">查看全部</RouterLink>
+        <div class="search-box catalog-search">
+          <Search :size="17" aria-hidden="true" />
+          <input
+            v-model="query"
+            aria-label="搜索滑坡编号、名称或说明"
+            placeholder="搜索滑坡编号或名称"
+            inputmode="search"
+            @keydown.esc="query = ''"
+          />
+          <button
+            v-if="query"
+            type="button"
+            class="icon-button"
+            aria-label="清除搜索"
+            @click="query = ''"
+          >
+            <X :size="15" />
+          </button>
+        </div>
+        <div class="catalog-filters" role="group" aria-label="类型筛选">
+          <button type="button" :aria-pressed="!type" @click="type = ''">全部</button>
+          <button
+            v-for="t in slideTypes"
+            :key="t"
+            type="button"
+            :aria-pressed="type === t"
+            :style="{ '--filter-color': typeInfo[t].color }"
+            @click="type = type === t ? '' : t"
+          >
+            {{ typeInfo[t].name }}
+          </button>
+        </div>
       </div>
-      <p v-if="focusNote" class="focus-hint" role="status">
-        <LocateFixed :size="14" /><span>{{ focusNote }}</span
-        ><button
+      <div v-if="focusNote" class="catalog-focus">
+        <p role="status"><LocateFixed :size="14" aria-hidden="true" /> {{ focusNote }}</p>
+        <button
           v-if="neighbors.length > neighborIndex + 1"
-          class="text-button"
+          type="button"
+          class="catalog-neighbor"
           @click="cycleNeighbor"
         >
-          下一个相邻点位（{{ neighborIndex + 2 }}/{{ neighbors.length }}）
+          下一相邻点位（{{ neighborIndex + 2 }}/{{ neighbors.length }}）
           <ChevronRight :size="13" />
         </button>
-        <span v-else-if="neighbors.length" class="focus-hint-note">
-          {{
-            neighborIndex < 0
-              ? `附近共 ${neighbors.length} 个密集点位`
-              : `已到最后一个相邻点位（共 ${neighbors.length} 个）`
-          }}
-        </span>
-      </p>
-      <p v-if="atlas.state.loading" class="list-status">正在加载目录，完成后刷新列表与点位…</p>
-      <CardRail
-        v-if="matches.length"
-        :key="`${query}:${type}`"
-        :count="visible.length"
-        label="滑坡目录"
-      >
-        <SlideCard
+        <span v-else-if="neighbors.length">已到最后一个相邻点位</span>
+      </div>
+      <p v-if="atlas.state.loading" class="catalog-loading" role="status">正在更新目录…</p>
+      <ul v-if="visible.length" id="explore-catalog-list" class="catalog-list">
+        <li
           v-for="slide in visible"
           :key="slide.id"
-          :slide="slide"
-          compact
-          :highlighted="slide.id === focusedId"
-        />
-      </CardRail>
-      <div v-else-if="!atlas.state.loading" class="empty-inline">
-        没有匹配的点位，试试其他编号、名称或类型。
+          class="catalog-row"
+          :class="{ 'is-located': slide.id === focusedId }"
+          :style="{ '--entry-color': typeInfo[slide.type].color }"
+          :data-slide-id="slide.id"
+        >
+          <RouterLink
+            class="catalog-record-link"
+            :to="{ name: 'catalog-record', params: { id: slide.id } }"
+            :aria-label="`查看${slide.name}详情`"
+          >
+            <span class="catalog-place">
+              <span class="catalog-record-title">
+                <strong>{{ slide.name }}</strong>
+                <ChevronRight :size="13" aria-hidden="true" />
+              </span>
+              <span class="catalog-coordinates">
+                {{ coordinateLabel(slide.longitude, slide.latitude) }}
+              </span>
+            </span>
+            <span class="catalog-kind">
+              <span>{{ typeInfo[slide.type].name }}</span>
+              <span v-if="slide.areaKm2 !== null">{{ slide.areaKm2.toFixed(2) }} km²</span>
+            </span>
+          </RouterLink>
+          <button
+            class="icon-button catalog-locate"
+            type="button"
+            :aria-label="`定位${slide.name}`"
+            :aria-pressed="slide.id === focusedId"
+            title="在火星球上定位"
+            @click="locateFromList(slide.id)"
+          >
+            <Crosshair :size="18" aria-hidden="true" />
+          </button>
+        </li>
+      </ul>
+      <div v-else-if="!atlas.state.loading" class="catalog-empty">
+        <p role="status">没有匹配的滑坡</p>
+        <button type="button" @click="clearFilters">清除筛选</button>
       </div>
-      <div v-if="remaining" class="load-more-row">
-        <button class="secondary-button" @click="loadMore">
-          加载更多（还有 {{ remaining }} 条）
+      <div v-if="visible.length" class="catalog-pagination">
+        <span role="status">
+          {{ formatCount(pageStart + 1) }}–{{ formatCount(pageStart + visible.length) }} /
+          {{ formatCount(matches.length) }} 条
+        </span>
+        <button
+          v-if="pageCount > 1"
+          class="icon-button"
+          type="button"
+          aria-label="上一页"
+          aria-controls="explore-catalog-list"
+          :disabled="page === 0"
+          @click="turnPage(-1)"
+        >
+          <ChevronLeft :size="18" />
         </button>
-        <span class="load-count">已显示 {{ visible.length }} / {{ matches.length }}</span>
+        <button
+          v-if="pageCount > 1"
+          class="icon-button"
+          type="button"
+          aria-label="下一页"
+          aria-controls="explore-catalog-list"
+          :disabled="page + 1 === pageCount"
+          @click="turnPage(1)"
+        >
+          <ChevronRight :size="18" />
+        </button>
       </div>
     </section>
-    <details class="quiet-details">
-      <summary>数据说明</summary>
-      <p>
-        当前展示 {{ atlas.state.catalog.records.length }} 条公开记录。{{
-          coordinates.note
-        }}来源见记录详情。
-      </p>
-      <p v-if="crowdedCount">相邻点位可能重叠，选中后可依次查看。</p>
-    </details>
   </section>
 </template>
+
+<style scoped>
+.explore-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.explore-actions a {
+  white-space: nowrap;
+}
+.catalog-panel {
+  min-width: 0;
+  align-self: start;
+  margin-block: var(--space-lg) 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.catalog-toolbar {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-md) var(--space-sm);
+}
+.catalog-heading,
+.catalog-atlas-link,
+.catalog-pagination {
+  display: flex;
+  align-items: center;
+}
+.catalog-heading {
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+.catalog-heading h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.catalog-atlas-link {
+  gap: var(--space-2xs);
+  min-height: 44px;
+  color: var(--accent-hover);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.catalog-atlas-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.catalog-search {
+  height: 44px;
+  padding-inline: var(--space-sm) 0;
+  border-color: var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+}
+.catalog-search input {
+  font-size: 1rem;
+  padding-inline-end: var(--space-xs);
+}
+.catalog-search .icon-button {
+  flex: 0 0 44px;
+}
+.catalog-filters {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2xs);
+}
+.catalog-filters button {
+  --filter-color: var(--accent-hover);
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.catalog-filters button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.catalog-filters button[aria-pressed='true'] {
+  border-color: color-mix(in oklab, var(--filter-color) 35%, var(--surface));
+  background: color-mix(in oklab, var(--filter-color) 12%, var(--surface));
+  color: var(--filter-color);
+  font-weight: 600;
+}
+.catalog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-xs);
+  border-block: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg) 45%, var(--surface));
+}
+.catalog-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding-inline-end: var(--space-2xs);
+}
+.catalog-row + .catalog-row {
+  border-top: 1px solid var(--line);
+}
+.catalog-row.is-located {
+  background: var(--selected-bg);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.catalog-record-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 57px;
+  padding: var(--space-2xs) var(--space-xs);
+  border-radius: var(--radius-control);
+}
+.catalog-record-link:hover {
+  background: var(--surface-raised);
+}
+.catalog-place,
+.catalog-kind {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.catalog-record-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+.catalog-record-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.catalog-record-title svg,
+.catalog-coordinates,
+.catalog-kind > span + span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.catalog-kind {
+  justify-items: end;
+  margin-inline-end: var(--space-2xs);
+  color: var(--entry-color);
+  font-size: 0.8rem;
+}
+.catalog-locate {
+  color: var(--text-secondary);
+  border-radius: 8px;
+}
+.catalog-locate:hover,
+.catalog-locate[aria-pressed='true'] {
+  color: var(--accent-hover);
+  background: var(--surface-raised);
+}
+.catalog-focus,
+.catalog-loading,
+.catalog-empty {
+  padding-inline: var(--space-md);
+  font-size: var(--text-sm);
+}
+.catalog-focus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-xs);
+  padding-block: var(--space-2xs);
+  border-top: 1px solid var(--line);
+  color: var(--accent-hover);
+}
+.catalog-focus p,
+.catalog-neighbor {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+.catalog-neighbor {
+  min-height: 44px;
+  margin-inline-start: auto;
+  padding: 0;
+}
+.catalog-neighbor:hover,
+.catalog-empty button:hover {
+  text-decoration: underline;
+}
+.catalog-focus > span,
+.catalog-loading,
+.catalog-empty p {
+  color: var(--muted);
+}
+.catalog-loading {
+  padding-block: var(--space-xs);
+}
+.catalog-empty {
+  padding-block: var(--space-md);
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.catalog-empty button {
+  min-height: 44px;
+  color: var(--accent-hover);
+}
+.catalog-pagination {
+  gap: var(--space-2xs);
+  min-height: 56px;
+  padding-inline: var(--space-md) var(--space-xs);
+}
+.catalog-pagination > span {
+  margin-inline-end: auto;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.catalog-pagination .icon-button {
+  flex: 0 0 44px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+}
+@media (min-width: 900px) {
+  .catalog-panel {
+    margin-block-start: 0;
+  }
+}
+</style>

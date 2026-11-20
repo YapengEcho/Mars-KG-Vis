@@ -2,7 +2,9 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { LoaderCircle, MapPin, ScanLine, Send, Sparkles } from '@lucide/vue'
+import AssistantMarkdown from '../components/AssistantMarkdown.vue'
 import SlideCard from '../components/SlideCard.vue'
+import { isChatWebLink } from '../lib/chatMarkdown'
 import { fetchCapabilities } from '../services/api'
 import type { AgentAction } from '../services/api'
 import { chat } from '../stores/chat'
@@ -74,15 +76,18 @@ function statusText() {
     </div>
     <div ref="scrollEl" class="chat-thread">
       <template v-for="(message, index) in thread" :key="index">
-        <div class="bubble" :class="message.role"><p>{{ message.content }}</p></div>
+        <div class="bubble" :class="message.role">
+          <AssistantMarkdown v-if="message.role === 'assistant'" :content="message.content" />
+          <p v-else>{{ message.content }}</p>
+        </div>
         <div v-if="message.citations?.length" class="citation-list">
           <a
             v-for="citation in message.citations"
             :key="citation.refId"
-            :href="citation.url ?? undefined"
-            :class="{ disabled: !citation.url }"
+            :href="isChatWebLink(citation.url) ? citation.url : undefined"
+            :class="{ disabled: !isChatWebLink(citation.url) }"
             target="_blank"
-            rel="noopener"
+            rel="noopener noreferrer"
           >
             <Sparkles :size="13" />{{ citation.title }}
           </a>
@@ -109,7 +114,12 @@ function statusText() {
           </button>
         </div>
       </template>
-      <div v-if="busy && thread[thread.length - 1]?.role === 'user'" class="bubble assistant typing"><LoaderCircle :size="16" class="spin" /></div>
+      <div
+        v-if="busy && thread[thread.length - 1]?.role === 'user'"
+        class="bubble assistant typing"
+      >
+        <LoaderCircle :size="16" class="spin" />
+      </div>
     </div>
     <p v-if="error" class="chat-error" role="alert">{{ error }}</p>
     <form class="chat-input" @submit.prevent="send">

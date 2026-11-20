@@ -8,6 +8,7 @@ export interface Slide {
   longitude: number
   latitude: number
   areaKm2: number | null
+  perimeterKm?: number | null
   summary: string
   imageUrl: string | null
   source: { title: string; url: string | null }

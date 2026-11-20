@@ -55,6 +55,12 @@ export function parseCatalog(value: unknown): Catalog {
     if (r.areaKm2 !== null && (!Number.isFinite(r.areaKm2) || r.areaKm2 < 0))
       throw new Error('面积必须为非负数或空值')
     if (
+      r.perimeterKm !== undefined &&
+      r.perimeterKm !== null &&
+      (!Number.isFinite(r.perimeterKm) || r.perimeterKm < 0)
+    )
+      throw new Error('周长必须为非负数或空值')
+    if (
       r.imageUrl !== null &&
       (typeof r.imageUrl !== 'string' ||
         r.imageUrl.startsWith('//') ||

@@ -4,6 +4,7 @@ export const apiBase = configured ? configured.replace(/\/$/, '') : ''
 export interface Capabilities {
   classifier: {
     available: boolean
+    screeningAvailable?: boolean
     reason?: string
     historyAvailable?: boolean
     modelVersion?: string

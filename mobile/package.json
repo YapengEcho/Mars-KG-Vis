@@ -20,6 +20,7 @@
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@lucide/vue": "^1.59.0",
+    "markdown-it": "15.0.3",
     "three": "^0.180.0",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"

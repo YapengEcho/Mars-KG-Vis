@@ -5,7 +5,8 @@ import { ImagePlus, ScanLine, X } from '@lucide/vue'
 import RecognitionResult from '../components/RecognitionResult.vue'
 import { fetchCapabilities } from '../services/api'
 import { submitRecognition } from '../services/recognition'
-import { samples, sampleById } from '../lib/samples'
+import { publicAssetUrl } from '../lib/publicAssets'
+import { sampleById, trialSamples } from '../lib/samples'
 const router = useRouter()
 const route = useRoute()
 const available = ref(false)
@@ -17,21 +18,27 @@ const imageValid = ref(true)
 const message = ref('')
 const busy = ref(false)
 const choosing = ref(false)
-const isSample = ref(false)
-const sampleRoi = ref<number[] | undefined>()
+const selectedSampleId = ref('')
 const MAX_IMAGE_PIXELS = 4096 * 4096
 const MAX_IMAGE_SIDE = 8192
 let selection = 0
 let active = true
 const taskId = computed(() => (typeof route.query.task === 'string' ? route.query.task : ''))
+const resultSampleId = computed(() => {
+  const { recognitionSampleId, recognitionSampleTaskId } = router.options.history.state
+  if (taskId.value === recognitionSampleTaskId && typeof recognitionSampleId === 'string')
+    return recognitionSampleId
+})
 async function connect() {
   serviceText.value = '正在检查识别服务…'
   available.value = false
   try {
     const cap = await fetchCapabilities()
     if (!active) return
-    available.value = cap?.classifier.available ?? false
-    serviceText.value = available.value ? '单图分类服务已连接' : '识别服务未连接，仍可浏览影像'
+    available.value = Boolean(cap?.classifier.available && cap.classifier.screeningAvailable)
+    if (available.value) serviceText.value = '单图识别服务已连接'
+    else if (cap?.classifier.available) serviceText.value = '滑坡初筛服务尚未就绪'
+    else serviceText.value = '识别服务未连接'
   } catch {
     if (active) serviceText.value = '暂时无法连接识别服务'
   }
@@ -45,9 +52,8 @@ function clear() {
   dimensions.value = null
   imageValid.value = true
   message.value = ''
-  isSample.value = false
+  selectedSampleId.value = ''
   choosing.value = false
-  sampleRoi.value = undefined
 }
 function choose(selected: File) {
   if (!['image/png', 'image/jpeg'].includes(selected.type)) {
@@ -100,13 +106,14 @@ async function useSample(id: string) {
   const revision = selection
   choosing.value = true
   try {
-    const response = await fetch(sample.imageUrl, { signal: AbortSignal.timeout(10000) })
+    const response = await fetch(publicAssetUrl(sample.imageUrl), {
+      signal: AbortSignal.timeout(10000),
+    })
     if (!response.ok) throw new Error('影像加载失败。')
     const blob = await response.blob()
     if (!active || selection !== revision) return
     choose(new File([blob], `${id}.png`, { type: 'image/png' }))
-    isSample.value = true
-    sampleRoi.value = sample.roi
+    selectedSampleId.value = sample.id
   } catch (e) {
     if (active && revision === selection)
       message.value = e instanceof Error ? e.message : '图片加载失败。'
@@ -125,11 +132,19 @@ async function submit() {
   if (!file.value || !imageValid.value || !available.value || busy.value) return
   busy.value = true
   message.value = ''
+  const sample = sampleById(selectedSampleId.value)
   try {
-    const task = await submitRecognition(file.value, sampleRoi.value)
+    const task = await submitRecognition(file.value, sample?.roi)
     if (active) {
       clear()
-      await router.replace({ path: '/recognize', query: { task: task.taskId } })
+      await router.replace({
+        path: '/recognize',
+        query: { task: task.taskId },
+        state: {
+          recognitionSampleId: sample?.id ?? null,
+          recognitionSampleTaskId: sample ? task.taskId : null,
+        },
+      })
     }
   } catch (e) {
     if (active)
@@ -146,14 +161,14 @@ onBeforeUnmount(() => {
 <template>
   <section class="content-view identify-view">
     <div class="page-heading">
-      <h1>识别滑坡类型</h1>
-      <p>上传单个滑坡的裁片</p>
+      <h1>滑坡识别</h1>
+      <p>上传裁好的 CTX 影像。先筛查是否含滑坡，再判断类型。</p>
     </div>
     <div class="service-status" role="status">
       {{ serviceText }}<button v-if="!available" class="text-button" @click="connect">重试</button>
     </div>
     <template v-if="taskId">
-      <RecognitionResult :key="taskId" :task-id="taskId" />
+      <RecognitionResult :key="taskId" :task-id="taskId" :sample-id="resultSampleId" />
       <div class="sample-actions">
         <RouterLink to="/recognize" class="primary-button">识别另一张</RouterLink
         ><RouterLink to="/mine" class="secondary-button">查看历史记录</RouterLink>
@@ -165,9 +180,11 @@ onBeforeUnmount(() => {
           <label class="upload-area" :class="{ 'has-image': preview }">
             <img v-if="preview" :src="preview" alt="待识别图片预览" /><template v-else
               ><ImagePlus :size="34" :stroke-width="1.4" /><strong>{{
-                choosing ? '正在加载影像…' : '选择滑坡影像'
+                choosing ? '正在加载影像…' : '选择遥感裁片'
               }}</strong
-              ><span>PNG / JPEG，最大 8 MB；总像素不超过 4096×4096，最长边不超过 8192</span></template
+              ><span
+                >PNG / JPEG，最大 8 MB；总像素不超过 4096×4096，最长边不超过 8192</span
+              ></template
             >
             <input
               type="file"
@@ -185,41 +202,39 @@ onBeforeUnmount(() => {
               <X :size="18" />
             </button>
           </div>
-          <p v-if="isSample" class="sample-caption">编目影像 · 使用已有目标框</p>
+          <p v-if="selectedSampleId" class="sample-caption">编目影像 · 使用已有目标框</p>
           <button
             class="primary-button full-width"
             :disabled="!available || !file || !imageValid || busy || choosing"
             @click="submit"
           >
-            <ScanLine :size="18" />{{ busy ? '正在提交…' : '开始分类' }}
+            <ScanLine :size="18" />{{ busy ? '正在提交…' : '开始识别' }}
           </button>
           <p v-if="message" role="alert" class="notice">{{ message }}</p>
         </div>
         <div class="sample-column">
           <div class="section-heading sample-picker-heading">
-            <h2>从目录选择</h2>
-            <RouterLink to="/atlas#samples">全部影像</RouterLink>
+            <h2>试用样例</h2>
+            <RouterLink to="/atlas#samples">查看图鉴</RouterLink>
           </div>
           <div class="sample-picker">
             <button
-              v-for="sample in samples.filter((_, i) => i % 2 === 0)"
+              v-for="sample in trialSamples"
               :key="sample.id"
               :disabled="busy"
               @click="useSample(sample.id)"
             >
-              <img :src="sample.imageUrl" :alt="`选择滑坡 ${sample.sourceId}影像`" /><span
-                >{{ sample.type }} {{ sample.sourceId }}</span
-              >
+              <img
+                :src="publicAssetUrl(sample.imageUrl)"
+                :alt="`选择滑坡 ${sample.sourceId}影像`"
+              /><span>{{ sample.type }} {{ sample.sourceId }}</span>
             </button>
           </div>
         </div>
       </div>
-      <p class="result-note">开始分类后上传图片，结果需复核。</p>
       <details class="quiet-details">
         <summary>使用说明</summary>
-        <p>
-          只对单个滑坡分类，不检测整幅遥感图。目录图片来自训练数据，试用结果不作为独立测试成绩。
-        </p>
+        <p>请使用含单一目标的 CTX 裁片。目录样例来自训练数据，仅用于试用。</p>
       </details>
     </template>
   </section>

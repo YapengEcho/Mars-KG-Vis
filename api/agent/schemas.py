@@ -2,6 +2,7 @@
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from api.schemas import Slide
+from api.recognition_access import TaskId, TaskSummary
 AgentStatus = Literal["ok", "llm_unavailable", "error"]
 ActionType = Literal["locate", "open_recognize", "open_task"]
 class AgentModel(BaseModel):
@@ -11,6 +12,8 @@ class ChatMessage(AgentModel):
     content: str = Field(min_length=1)
 class ChatRequest(AgentModel):
     sessionId: str | None = Field(default=None, max_length=100)
+    recognitionTaskId: TaskId | None = Field(default=None,
+        description='Explicitly selected recognition task; requires its device Bearer credential.')
     messages: list[ChatMessage] = Field(min_length=1, max_length=50)
 class Citation(AgentModel):
     refType: Literal["source", "doc", "slide"]
@@ -34,3 +37,5 @@ class ChatResponse(AgentModel):
     toolCalls: list[ToolCallRecord] = Field(default_factory=list)
     traceId: str | None = None
     version: str | None = None
+    recognitionTask: TaskSummary | None = Field(default=None,
+        description='Authorized task summary, read from storage; null for ordinary chat or lookup failure.')

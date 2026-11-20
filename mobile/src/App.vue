@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { Compass, Layers, ScanLine, Sparkles, User } from '@lucide/vue'
-import SlideDetail from './components/SlideDetail.vue'
 import { atlas } from './stores/atlas'
 const tabs = [
   { to: '/', label: '探索', icon: Compass },
@@ -34,6 +33,5 @@ onMounted(() => atlas.load())
         ><i></i
       ></RouterLink>
     </nav>
-    <SlideDetail />
   </div>
 </template>

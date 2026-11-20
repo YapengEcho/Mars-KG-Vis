@@ -39,6 +39,7 @@ class Slide(StrictModel):
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     areaKm2: float | None = Field(ge=0, allow_inf_nan=False)
+    perimeterKm: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     summary: str
     imageUrl: str | None
     source: Source
@@ -101,6 +102,7 @@ class ClassifierCapability(Capability):
     preprocessingVersion: str | None = None
     reviewPolicy: str | None = None
     historyAvailable: bool = False
+    screeningAvailable: bool = False
 
 
 class DetectionCapability(Capability):

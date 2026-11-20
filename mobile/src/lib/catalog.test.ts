@@ -49,6 +49,15 @@ describe('catalog boundary', () => {
     record.source = { title: 'bad', url: 42 }
     expect(() => parseCatalog(catalog)).toThrow()
   })
+  it('validates perimeter when present and still accepts earlier catalog records', () => {
+    const catalog = structuredClone(demo)
+    const record = catalog.records[0] as unknown as Record<string, unknown>
+    expect(parseCatalog(catalog).records[0]?.perimeterKm).toBeUndefined()
+    record.perimeterKm = 23.125
+    expect(parseCatalog(catalog).records[0]?.perimeterKm).toBe(23.125)
+    record.perimeterKm = -3
+    expect(() => parseCatalog(catalog)).toThrow('周长')
+  })
   it('rejects earth coordinate metadata', () => {
     const catalog = structuredClone(demo)
     catalog.coordinateSystem.body = 'Earth'

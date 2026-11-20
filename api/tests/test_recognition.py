@@ -1,5 +1,6 @@
 from io import BytesIO
 import json
+import sqlite3
 import threading
 import time
 
@@ -24,15 +25,24 @@ class FakeClassifier:
         return dict(SL=.1, SP=.2, FL=.3, CL=.4)
 
 
+class FakeBinaryScreen:
+    version = 'synthetic-screen-v1'
+    threshold = .5
+
+    def predict(self, image, roi=None):
+        return .75
+
+
 @pytest.fixture(autouse=True)
 def isolate_config(monkeypatch):
-    for name in ('MARS_CLASSIFIER_MANIFEST', 'MARS_RECOGNITION_DB', 'MARS_DB_PATH'):
+    for name in ('MARS_CLASSIFIER_MANIFEST', 'MARS_BINARY_SCREEN_MANIFEST', 'MARS_RECOGNITION_DB', 'MARS_DB_PATH'):
         monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture
 def client(tmp_path):
-    with TestClient(create_app(classifier=FakeClassifier(), recognition_database=tmp_path/'tasks.sqlite3')) as c:
+    with TestClient(create_app(classifier=FakeClassifier(), binary_screen=FakeBinaryScreen(),
+                               recognition_database=tmp_path/'tasks.sqlite3')) as c:
         yield c
 
 
@@ -43,9 +53,12 @@ def credential(client):
     return {'Authorization': 'Bearer '+response.json()['token']}
 
 
-def png(size=(280,140)):
+def png(size=(280,140), *, colored=False):
     stream = BytesIO()
-    Image.new('RGB', size, (20,70,100)).save(stream, format='PNG')
+    gray = Image.linear_gradient('L').resize(size)
+    image = Image.merge('RGB', (gray, gray.point(lambda value: value // 4),
+                               gray.point(lambda value: 150 + value // 4))) if colored else gray.convert('RGB')
+    image.save(stream, format='PNG')
     return stream.getvalue()
 
 
@@ -68,6 +81,7 @@ def test_task_lifecycle_isolation_image_delete_and_version(client):
     a, b = credential(client), credential(client)
     capability = client.get('/api/capabilities').json()['classifier']
     assert capability['available'] and capability['historyAvailable']
+    assert capability['screeningAvailable'] is True
     assert capability['preprocessingVersion'] == PREPROCESSING_VERSION
     response = submit(client,a,{'roi':'[20,20,200,120]'})
     assert response.status_code == 202
@@ -79,6 +93,8 @@ def test_task_lifecycle_isolation_image_delete_and_version(client):
     assert task['status'] == 'completed'
     assert task['input']['roi'] == [20,20,200,120]
     assert task['input']['roiSource'] == 'provided_box'
+    assert task['screening'] == dict(decision='possible_landslide', score=.75, threshold=.5,
+                                     modelVersion=FakeBinaryScreen.version)
     assert task['result']['prediction'] == 'CL'
     assert task['result']['uncertain'] is True and task['result']['scoresCalibrated'] is False
     assert task['result']['modelVersion'] == task['modelVersion'] == FakeClassifier.version
@@ -104,20 +120,103 @@ def test_task_lifecycle_isolation_image_delete_and_version(client):
 
 def test_persistence_and_history_available_without_weights(tmp_path):
     db = tmp_path/'tasks.sqlite3'
-    with TestClient(create_app(classifier=FakeClassifier(),recognition_database=db)) as c:
+    with TestClient(create_app(classifier=FakeClassifier(), binary_screen=FakeBinaryScreen(),
+                               recognition_database=db)) as c:
         headers = credential(c)
         task_id = submit(c,headers).json()['taskId']
         done = wait_result(c,headers,task_id)
         store = c.app.state.recognition.store
         with store.connect() as connection:
             row = connection.execute('SELECT * FROM recognition_jobs').fetchone()
-            assert row['pixels'] is None and row['weights_json'] is None
+            assert row['pixels'] is None and row['weights_json'] is None and row['screen_input'] is None
             assert headers['Authorization'][7:] not in db.read_bytes().decode('latin1')
     with TestClient(create_app(recognition_database=db)) as c:
         assert c.get('/api/recognition/tasks/'+task_id,headers=headers).json() == done
         cap = c.get('/api/capabilities').json()['classifier']
         assert cap['historyAvailable'] and not cap['available']
-        assert submit(c,headers).status_code == 503
+        response = submit(c,headers)
+        assert response.status_code == 503
+        assert response.json()['detail']['code'] == 'MODEL_NOT_CONFIGURED'
+
+
+@pytest.mark.parametrize(('colored', 'score', 'decision', 'expected_calls'), [
+    (True, .9, 'unsupported_image', []),
+    (False, -.25, 'no_landslide', ['binary']),
+    (False, float('nan'), 'inconclusive', ['binary']),
+    (False, .5, 'possible_landslide', ['binary', 'four_class']),
+], ids=['ordinary-color-image', 'below-threshold', 'unusable-score', 'at-threshold'])
+def test_binary_screen_must_pass_before_four_class(tmp_path, colored, score, decision, expected_calls):
+    calls = []
+    roi = [20, 20, 200, 120]
+
+    class TrackingScreen(FakeBinaryScreen):
+        def predict(self, image, roi=None):
+            calls.append('binary')
+            assert image.size == (280, 140)
+            assert roi == [20, 20, 200, 120]
+            return score
+
+    class TrackingClassifier(FakeClassifier):
+        def predict(self, prepared):
+            calls.append('four_class')
+            return super().predict(prepared)
+
+    with TestClient(create_app(classifier=TrackingClassifier(), binary_screen=TrackingScreen(),
+                               recognition_database=tmp_path/'cascade.sqlite3')) as c:
+        auth = credential(c)
+        response = submit(c, auth, {'roi': json.dumps(roi)}, payload=png(colored=colored))
+        assert response.status_code == 202
+        task = wait_result(c, auth, response.json()['taskId'])
+        assert task['status'] == 'completed'
+        assert task['screening']['decision'] == decision
+        assert task['screening']['score'] == (None if decision in ('unsupported_image','inconclusive') else score)
+        if not colored:
+            assert task['screening']['threshold'] == FakeBinaryScreen.threshold
+            assert task['screening']['modelVersion'] == FakeBinaryScreen.version
+        assert calls == expected_calls
+        if decision == 'possible_landslide':
+            assert task['result']['prediction'] == 'CL'
+        else:
+            assert task['result'] is None
+        history = c.get('/api/recognition/tasks', headers=auth).json()
+        assert history['items'] == [task]
+        assert c.get('/api/recognition/tasks/' + task['taskId'], headers=credential(c)).status_code == 404
+        with c.app.state.recognition.store.connect() as db:
+            row = db.execute('SELECT pixels,weights_json,screen_input FROM recognition_jobs WHERE id=?',
+                             (task['taskId'],)).fetchone()
+            assert tuple(row) == (None, None, None)
+
+
+def test_existing_database_keeps_older_four_class_results(tmp_path):
+    path = tmp_path/'legacy.sqlite3'
+    store = TaskStore(path)
+    token = store.issue_session()['token']
+    owner = store.authenticate(token)
+    prepared = prepare_image(Image.new('RGB', (32, 24)))
+    task_id = store.enqueue(owner, prepared, FakeClassifier.version)
+    store.claim()
+    result = classification_result(FakeClassifier().predict(prepared), FakeClassifier())
+    store.finish(task_id, result=result)
+    # Recreate the column layout used before screening was introduced.
+    with sqlite3.connect(path) as db:
+        db.execute('ALTER TABLE recognition_jobs DROP COLUMN screen_input')
+        db.execute('ALTER TABLE recognition_jobs DROP COLUMN screening_json')
+    with TestClient(create_app(recognition_database=path)) as c:
+        response = c.get('/api/recognition/tasks/'+task_id, headers={'Authorization':'Bearer '+token})
+        assert response.status_code == 200
+        body = response.json()
+        assert body['status'] == 'completed' and body['screening'] is None and body['result'] == result
+
+
+def test_submission_cannot_bypass_missing_binary_model(tmp_path):
+    with TestClient(create_app(classifier=FakeClassifier(), recognition_database=tmp_path/'tasks.sqlite3')) as c:
+        auth = credential(c)
+        cap = c.get('/api/capabilities').json()['classifier']
+        assert cap['historyAvailable'] and not cap['available'] and not cap['screeningAvailable']
+        response = submit(c, auth)
+        assert response.status_code == 503
+        assert response.json()['detail']['code'] == 'SCREENING_NOT_CONFIGURED'
+        assert c.get('/api/recognition/tasks', headers=auth).json()['total'] == 0
 
 
 def test_auth_expiry_and_validation(client):
@@ -181,7 +280,8 @@ def test_queue_busy_restart_and_exclusive_worker(tmp_path):
             release.wait(5)
             return super().predict(p)
     db = tmp_path/'tasks.sqlite3'
-    with TestClient(create_app(classifier=Blocking(),recognition_database=db)) as c:
+    with TestClient(create_app(classifier=Blocking(), binary_screen=FakeBinaryScreen(),
+                               recognition_database=db)) as c:
         try:
             h = credential(c)
             task_id = submit(c,h).json()['taskId']
@@ -197,18 +297,23 @@ def test_queue_busy_restart_and_exclusive_worker(tmp_path):
             release.set()
     store = TaskStore(db)
     owner_hash = store.authenticate(store.issue_session()['token'])
-    pending = store.enqueue(owner_hash,prepare_image(Image.new('RGB',(20,20))),FakeClassifier.version)
+    pending = store.enqueue(owner_hash, prepare_image(Image.new('RGB',(20,20))),
+                            FakeClassifier.version, screen_input=png())
     store.claim()
     with TestClient(create_app(recognition_database=db)):
         assert store.get(owner_hash,pending)['status'] == 'failed'
         assert store.get(owner_hash,pending)['errorCode'] == 'PROCESS_RESTARTED'
+        with store.connect() as connection:
+            row = connection.execute('SELECT screen_input FROM recognition_jobs WHERE id=?', (pending,)).fetchone()
+            assert row['screen_input'] is None
 
 
 def test_model_failure_is_durable_without_exception_details(tmp_path):
     class Broken(FakeClassifier):
         def predict(self,p):
             raise RuntimeError('private local model path')
-    with TestClient(create_app(classifier=Broken(),recognition_database=tmp_path/'tasks.db')) as c:
+    with TestClient(create_app(classifier=Broken(), binary_screen=FakeBinaryScreen(),
+                               recognition_database=tmp_path/'tasks.db')) as c:
         h = credential(c)
         task = wait_result(c,h,submit(c,h).json()['taskId'])
         assert task['status'] == 'failed' and task['errorCode'] == 'INFERENCE_FAILED'

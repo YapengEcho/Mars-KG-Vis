@@ -42,6 +42,17 @@ class ExportCatalogTests(unittest.TestCase):
         self.assertTrue(all(record["imageUrl"] is None and record["isDemo"] is False for record in catalog["records"]))
         self.assertEqual(len(convert(rows, limit=2)["records"]), 2)
 
+    def test_exports_perimeter_only_when_opted_in(self):
+        rows = sample_rows()
+        rows[0]["perimeter"] = 23.125
+        self.assertNotIn("perimeterKm", convert(rows)["records"][0])
+        records = convert(rows, include_perimeter_km=True)["records"]
+        self.assertEqual(records[0]["perimeterKm"], 23.125)
+        self.assertIsNone(records[1]["perimeterKm"])
+        rows[-1]["perimeter"] = -1
+        with self.assertRaisesRegex(ValueError, "perimeter"):
+            convert(rows, include_perimeter_km=True, limit=1)
+
     def test_rejects_invalid_coordinates_and_unknown_class_even_beyond_limit(self):
         for field, value in (("lon", 181), ("lat", -91), ("lat", float("nan")),
                              ("lon", True), ("type", "slump")):
