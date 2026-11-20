@@ -190,3 +190,152 @@ def test_rare_term_outranks_common_term():
     docs = guidebook_retriever().search("体积效应", limit=1)
     assert docs
     assert docs[0].doc_id == "doc-volume-effect"
+
+
+def test_guidebook_includes_atlas_cases():
+    """图鉴 12 例应全部进入索引，且每条都带目录关联与出处。"""
+    docs = load_docs(GUIDEBOOK)
+    cases = [doc for doc in docs if doc.doc_type == "case"]
+    assert len(cases) == 12
+    for doc in cases:
+        assert doc.slide_ids, f"{doc.doc_id} 缺少 slide_ids"
+        assert doc.source_url and doc.source_url.startswith("https://doi.org/")
+        assert "出处：" in doc.text, f"{doc.doc_id} 正文缺少定位"
+
+
+def test_guidebook_records_atlas_version():
+    """索引必须记录它由哪一版图鉴生成，便于三方核对同一版本。"""
+    import json
+
+    payload = json.loads(GUIDEBOOK.read_text(encoding="utf-8-sig"))
+    assert payload.get("atlasVersion")
+    assert payload.get("generatedBy") == "scripts/import_atlas_to_guidebook.py"
+
+
+def test_search_docs_finds_case_by_landslide_id():
+    result = execute_tool(
+        "search_docs",
+        {"q": "ls_0493", "doc_type": "case"},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    assert result.payload["results"][0]["doc_id"] == "doc-case-ls_0493"
+    assert result.citations[0].url.startswith("https://doi.org/")
+
+
+def test_sl_case_query_returns_only_sl_cases():
+    """问“有哪些 SL 案例”时，不能让 SP/FL/CL 的案例混进来。"""
+    result = execute_tool(
+        "search_docs",
+        {"q": "有哪些 SL 案例", "doc_type": "case", "limit": 6},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    for item in result.payload["results"]:
+        assert item["doc_type"] == "case"
+        assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
+
+
+def test_sl_case_query_without_space_returns_only_sl_cases():
+    """“有哪些SL案例”——类型码紧跟中文、没有空格，也要只返回 SL。"""
+    result = execute_tool(
+        "search_docs",
+        {"q": "有哪些SL案例", "doc_type": "case", "limit": 6},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    for item in result.payload["results"]:
+        assert item["doc_type"] == "case"
+        assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
+
+
+def test_sl_case_query_with_chinese_type_name_returns_only_sl_cases():
+    """“滑移型案例有哪些”——用中文类型名提问，也要只返回 SL。"""
+    result = execute_tool(
+        "search_docs",
+        {"q": "滑移型案例有哪些", "doc_type": "case", "limit": 6},
+        make_catalog(),
+        guidebook_retriever(),
+    )
+    assert result.ok
+    assert result.payload["results"]
+    for item in result.payload["results"]:
+        assert item["doc_type"] == "case"
+        assert "类型：SL" in item["text"], f"{item['doc_id']} 不是 SL"
+
+
+def test_case_type_detection_ignores_landslide_ids_and_ambiguous_questions():
+    """编号里的 ls 不能被当成 SL；同时点名两个类型时不应过滤。"""
+    from api.agent.tools import _wanted_case_type
+
+    assert _wanted_case_type("ls_0493") is None
+    assert _wanted_case_type("请看 ls_0493 这个案例") is None
+    assert _wanted_case_type("有哪些 SL 案例") == "SL"
+    assert _wanted_case_type("有哪些SL案例") == "SL"
+    assert _wanted_case_type("滑移型案例有哪些") == "SL"
+    assert _wanted_case_type("SL 和 SP 的区别") is None
+    assert _wanted_case_type("滑移型和滑塌型有什么不同") is None
+
+
+def test_case_docs_record_public_image_status():
+    """每条案例都要写明公开影像状态，并与 samples 清单一致。"""
+    import json
+
+    samples_path = Path(__file__).resolve().parents[2] / "examples" / "recognition.samples.json"
+    samples = json.loads(samples_path.read_text(encoding="utf-8-sig"))
+    with_image = {record["id"] for record in samples.get("records", [])}
+
+    cases = [doc for doc in load_docs(GUIDEBOOK) if doc.doc_type == "case"]
+    assert len(cases) == 12
+    for doc in cases:
+        slide_id = doc.slide_ids[0]
+        has_image = "公开影像：有" in doc.text
+        assert has_image == (slide_id in with_image), f"{doc.doc_id} 影像状态与清单不符"
+        assert ("目录关联：已在公开子集" in doc.text) or ("目录关联：仅在完整目录" in doc.text)
+
+
+def _load_converter():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "import_atlas_to_guidebook.py"
+    spec = importlib.util.spec_from_file_location("import_atlas_to_guidebook", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_rebuild_drops_cases_removed_from_atlas(tmp_path):
+    """图鉴里删掉的案例，重建索引后必须消失，也不能再被检索到。"""
+    import json
+
+    module = _load_converter()
+    atlas = json.loads(module.ATLAS_PATH.read_text(encoding="utf-8-sig"))
+    index = json.loads(module.INDEX_PATH.read_text(encoding="utf-8-sig"))
+    public_images, public_catalog = module.load_public_assets()
+
+    before = module.build(atlas, index["docs"], public_images, public_catalog)
+    target = next(doc for doc in before if doc["doc_type"] == "case")["doc_id"]
+    slide_id = target.replace("doc-case-", "")
+
+    trimmed = dict(atlas)
+    trimmed["cases"] = [
+        case for case in atlas["cases"] if f"doc-case-{case['landslideId']}" != target
+    ]
+    after = module.build(trimmed, before, public_images, public_catalog)
+
+    assert target not in {doc["doc_id"] for doc in after}
+
+    rebuilt = tmp_path / "index.json"
+    rebuilt.write_text(
+        json.dumps({"atlasVersion": trimmed.get("version"), "docs": after}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    retriever = KeywordRetriever(load_docs(rebuilt))
+    hits = retriever.search(slide_id, doc_type="case", limit=12)
+    assert all(doc.doc_id != target for doc in hits)

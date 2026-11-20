@@ -18,6 +18,7 @@ class Doc:
     title: str
     text: str
     slide_ids: list[str] = field(default_factory=list)
+    case_type: str | None = None
     source_title: str = ""
     source_url: str | None = None
 def _query_terms(query: str) -> list[str]:
@@ -73,6 +74,7 @@ def load_docs(path: str | Path) -> list[Doc]:
                 title=item["title"],
                 text=item.get("text", ""),
                 slide_ids=item.get("slide_ids", []),
+                case_type=item.get("caseType"),
                 source_title=item.get("source_title", ""),
                 source_url=item.get("source_url"),
             )
