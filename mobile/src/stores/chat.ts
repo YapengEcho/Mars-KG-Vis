@@ -1,7 +1,9 @@
 import { reactive } from 'vue'
 import { buildChatHistory } from '../lib/chatHistory'
 import { streamChatMessage } from '../services/api'
-import type { AgentAction, ChatResponse } from '../services/api'
+import type { AgentAction, ChatResponse, ChatStreamHandlers } from '../services/api'
+import { prepareExternalModel, streamExternalChat } from '../services/externalChat'
+import type { ExternalModel, ExternalModelSettings } from '../services/externalChat'
 
 export const WELCOME_MESSAGE =
   '你好，我是火星滑坡助手。可以问我：某类滑坡有哪些、数量统计、类型与案例资料，或让我把某个点位定位到地图上。'
@@ -30,13 +32,35 @@ const state = reactive({
   thread: [{ role: 'assistant', content: WELCOME_MESSAGE }] as ChatEntry[],
   busy: false,
   error: '',
+  model: null as ExternalModelSettings | null,
 })
+
+// The credential stays in memory and is separate from the UI and transcripts.
+let externalModel: ExternalModel | null = null
+
+function reset() {
+  state.thread = [{ role: 'assistant', content: WELCOME_MESSAGE }]
+  state.error = ''
+}
 
 export const chat = {
   state,
-  reset() {
-    state.thread = [{ role: 'assistant', content: WELCOME_MESSAGE }]
-    state.error = ''
+  reset,
+  setModel(draft: ExternalModel | null) {
+    if (state.busy) return
+    const next = draft ? prepareExternalModel(draft, externalModel) : null
+    if (
+      externalModel?.provider === next?.provider &&
+      externalModel?.endpoint === next?.endpoint &&
+      externalModel?.model === next?.model &&
+      externalModel?.apiKey === next?.apiKey
+    )
+      return
+    externalModel = next
+    state.model = next
+      ? { provider: next.provider, endpoint: next.endpoint, model: next.model }
+      : null
+    reset()
   },
   async send(text: string): Promise<boolean> {
     const question = text.trim()
@@ -58,7 +82,8 @@ export const chat = {
       return state.thread[entryIndex]
     }
     try {
-      await streamChatMessage(buildChatHistory(state.thread), {
+      const messages = buildChatHistory(state.thread)
+      const handlers: ChatStreamHandlers = {
         onDelta: (chunk) => {
           ensureEntry().content += chunk
         },
@@ -72,7 +97,9 @@ export const chat = {
           entry.status = response.status
           entry.pending = false
         },
-      })
+      }
+      if (externalModel) await streamExternalChat(externalModel, messages, handlers)
+      else await streamChatMessage(messages, handlers)
       if (!finished) state.error = '回复未完成，请重试'
     } catch (e) {
       state.error = e instanceof Error ? e.message : '发送失败，请稍后重试'

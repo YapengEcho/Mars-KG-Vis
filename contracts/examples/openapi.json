@@ -728,6 +728,66 @@
       "get": {
         "summary": "Complete Catalog",
         "operationId": "complete_catalog_api_catalog_get",
+        "parameters": [
+          {
+            "name": "chart",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "types",
+                    "latitude"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chart"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "SL",
+                    "SP",
+                    "FL",
+                    "CL"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -735,6 +795,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Catalog"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The requested catalogue version has changed."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1100,6 +1179,45 @@
           },
           {}
         ]
+      }
+    },
+    "/api/agent/context": {
+      "post": {
+        "summary": "Agent Context",
+        "description": "Provide public context to the browser without calling a language model.",
+        "operationId": "agent_context_api_agent_context_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalChatContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -2666,6 +2784,72 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "ExternalContextRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Question"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "ExternalContextRequest"
+      },
+      "ExternalChatContext": {
+        "properties": {
+          "reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "excerpts": {
+            "items": {
+              "$ref": "#/components/schemas/PublicGuidebookExcerpt"
+            },
+            "type": "array",
+            "title": "Excerpts"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExternalChatContext"
+      },
+      "PublicGuidebookExcerpt": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "text"
+        ],
+        "title": "PublicGuidebookExcerpt"
       }
     },
     "securitySchemes": {

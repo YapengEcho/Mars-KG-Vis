@@ -20,6 +20,9 @@ const casesWithImage = computed(
         .map((item) => item.id),
     ),
 )
+const comparison = computed(() =>
+  atlasContent.comparisons.find((pair) => pair.left === type.value || pair.right === type.value),
+)
 </script>
 
 <template>
@@ -31,19 +34,13 @@ const casesWithImage = computed(
       <RouterLink class="type-page-back" to="/atlas">
         <ArrowLeft :size="16" aria-hidden="true" />返回图鉴
       </RouterLink>
-      <RouterLink v-if="entry" class="type-page-compare" to="/atlas/compare">
+      <RouterLink
+        v-if="entry"
+        class="type-page-compare"
+        :to="{ path: '/atlas/compare', query: comparison ? { pair: comparison.id } : {} }"
+      >
         类型对比 <ArrowUpRight :size="15" aria-hidden="true" />
       </RouterLink>
-      <nav v-if="entry" class="type-guide-nav" aria-label="滑坡类型">
-        <RouterLink
-          v-for="kind in slideTypes"
-          :key="kind"
-          :to="`/atlas/type/${kind}`"
-          :class="{ current: kind === type }"
-        >
-          {{ typeInfo[kind].name }}
-        </RouterLink>
-      </nav>
     </div>
 
     <p v-if="!entry" class="notice">未知的滑坡类别：{{ props.type }}</p>
@@ -55,6 +52,17 @@ const casesWithImage = computed(
         </div>
         <p>{{ entry.quote }}</p>
       </header>
+
+      <nav class="type-guide-nav" aria-label="滑坡类型">
+        <RouterLink
+          v-for="kind in slideTypes"
+          :key="kind"
+          :to="`/atlas/type/${kind}`"
+          :class="{ current: kind === type }"
+        >
+          {{ typeInfo[kind].name }}
+        </RouterLink>
+      </nav>
 
       <div class="type-guide-grid">
         <section class="type-signals" aria-labelledby="type-signals-title">
@@ -134,12 +142,11 @@ const casesWithImage = computed(
   max-width: 1032px;
 }
 .type-page-links {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: 'back compare' 'types types';
+  display: flex;
   align-items: center;
-  gap: var(--space-2xs) var(--space-sm);
-  margin-block-end: var(--space-md);
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xs);
 }
 .type-page-back,
 .type-page-compare {
@@ -149,14 +156,6 @@ const casesWithImage = computed(
   min-height: 44px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
-}
-.type-page-back {
-  grid-area: back;
-  justify-self: start;
-}
-.type-page-compare {
-  grid-area: compare;
-  justify-self: end;
 }
 .type-page-back:hover,
 .type-page-compare:hover,
@@ -168,20 +167,19 @@ const casesWithImage = computed(
   --guide-padding: clamp(16px, 2.8vw, 24px);
 }
 .type-guide-nav {
-  grid-area: types;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-2xs);
-  padding: var(--space-2xs);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+  gap: var(--space-3xs);
+  margin-block-start: var(--guide-section-space);
+  border-block-end: 1px solid var(--line);
 }
 .type-guide-nav a {
   display: grid;
   place-items: center;
   min-height: 44px;
-  border-radius: 6px;
+  border-block-end: 2px solid transparent;
+  border-start-start-radius: 6px;
+  border-start-end-radius: 6px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
   white-space: nowrap;
@@ -191,19 +189,9 @@ const casesWithImage = computed(
   color: var(--text);
 }
 .type-guide-nav a.current {
-  background: color-mix(in oklab, var(--guide-color) 13%, var(--surface));
+  border-block-end-color: var(--guide-color);
   color: var(--guide-color);
   font-weight: 650;
-}
-.type-hero {
-  padding: var(--guide-padding);
-  border: 1px solid color-mix(in oklab, var(--guide-color) 35%, var(--line));
-  border-radius: 14px;
-  background: linear-gradient(
-    110deg,
-    color-mix(in oklab, var(--guide-color) 14%, var(--surface)),
-    var(--surface) 82%
-  );
 }
 .type-title {
   display: flex;
@@ -212,7 +200,7 @@ const casesWithImage = computed(
 }
 .type-title h1 {
   margin: 0;
-  font-size: clamp(2rem, 4.1vw, 3.1rem);
+  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
   font-weight: 650;
   line-height: 1.1;
 }
@@ -223,7 +211,7 @@ const casesWithImage = computed(
 }
 .type-hero p {
   max-width: 46rem;
-  margin-block-start: var(--space-sm);
+  margin: var(--space-sm) 0 0;
   color: var(--text-secondary);
   font-size: var(--text-md);
   line-height: 1.65;
@@ -377,13 +365,9 @@ const casesWithImage = computed(
   padding-inline-start: var(--space-md);
 }
 @media (min-width: 760px) {
-  .type-page-links {
-    grid-template-columns: 1fr minmax(280px, 420px) 1fr;
-    grid-template-areas: 'back types compare';
-  }
   .type-guide-grid {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    grid-template-areas: 'signals cases' 'landforms cases' 'landforms confusion';
+    grid-template-areas: 'signals cases' 'landforms confusion';
     align-items: start;
   }
   .type-signals {

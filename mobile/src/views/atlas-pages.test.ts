@@ -31,6 +31,7 @@ describe('atlas pages render without the private catalogue', () => {
     const html = await render('/atlas')
     expect(html).toContain('滑坡图鉴')
     expect(html).toContain('12 个案例')
+    expect(html).toContain('href="/atlas/compare"')
     for (const type of ['SL', 'SP', 'FL', 'CL']) {
       expect(html).toContain(`id="case-group-${type}"`)
       expect(html).toContain(`href="/atlas/type/${type}"`)
@@ -59,10 +60,24 @@ describe('atlas pages render without the private catalogue', () => {
     expect(html).toContain('href="/atlas/type/FL"')
     expect(html).toContain('返回流动型')
   })
-  it('renders both comparisons as tables', async () => {
+  it('renders one comparison at a time with navigable pair links', async () => {
     const html = await render('/atlas/compare')
-    expect(html).toContain('SL 滑移型 vs SP 滑塌型')
-    expect(html.match(/<table/g)?.length).toBe(2)
+    expect(html).toMatch(/<caption[^>]*>SL 滑移型 vs SP 滑塌型<\/caption>/)
+    expect(html.match(/<table\b/g)).toHaveLength(1)
+    expect(html).toContain('href="/atlas/compare?pair=sl-vs-sp"')
+    expect(html).toContain('href="/atlas/compare?pair=sp-vs-cl"')
+
+    const second = await render('/atlas/compare?pair=sp-vs-cl')
+    expect(second).toMatch(/<caption[^>]*>SP 滑塌型 vs CL 复合型<\/caption>/)
+    expect(second).toContain('下部结构')
+    expect(second).not.toContain('运动距离')
+
+    const unknown = await render('/atlas/compare?pair=unknown')
+    expect(unknown).toContain('SL 滑移型 vs SP 滑塌型')
+  })
+  it('links from a type to a pair containing that type when it exists', async () => {
+    const html = await render('/atlas/type/CL')
+    expect(html).toContain('href="/atlas/compare?pair=sp-vs-cl"')
   })
   it('puts the image before case information and links the reference paper', async () => {
     const html = await render('/atlas/case/case-ls-0493')

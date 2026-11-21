@@ -1,4 +1,5 @@
 """Tests for the conversational agent and its tools."""
+import json
 from fastapi.testclient import TestClient
 from api.main import create_app
 from api.schemas import Catalog
@@ -67,6 +68,43 @@ def test_capabilities_reports_agent(monkeypatch):
         capabilities = client.get("/api/capabilities").json()
         assert "agent" in capabilities
         assert capabilities["agent"]["available"] is False
+def test_browser_context_keeps_catalog_actions_without_calling_a_model(tmp_path, monkeypatch):
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(make_catalog().model_dump_json(), encoding="utf-8")
+
+    def fail_if_called():
+        raise AssertionError("Public context must be independent of the server model")
+
+    monkeypatch.setattr(llm, "is_configured", fail_if_called)
+    with TestClient(create_app(catalog_path=catalog_path)) as client:
+        response = client.post("/api/agent/context", json={"question": "定位 demo-001"})
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+        body = response.json()
+        assert body["reply"]["actions"] == [{"type": "locate", "slideId": "demo-001", "taskId": None}]
+        assert body["excerpts"] == []
+        assert client.post("/api/agent/context", json={"question": "你好"}).json()["reply"] is None
+
+
+def test_browser_context_uses_packaged_public_docs_even_with_private_deployment_docs(tmp_path, monkeypatch):
+    private_docs = tmp_path / "private.json"
+    private_docs.write_text(json.dumps({"docs": [{
+        "doc_id": "private-doc",
+        "doc_type": "compare",
+        "title": "滑移型与滑塌型的区别",
+        "text": "test-private-doc-marker",
+    }]}), encoding="utf-8")
+    monkeypatch.setenv("MARS_DOCS_PATH", str(private_docs))
+    with TestClient(create_app()) as client:
+        response = client.post("/api/agent/context", json={"question": "滑移型与滑塌型的区别是什么"})
+        assert response.status_code == 200
+        context = response.json()
+        assert context["reply"] is None
+        assert context["excerpts"]
+        assert context["citations"]
+        assert "test-private-doc-marker" not in response.text
+
+
 def test_tools_return_consistent_results():
     catalog = make_catalog()
     retriever = KeywordRetriever([])

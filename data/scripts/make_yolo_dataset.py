@@ -1,31 +1,5 @@
 # -*- coding: utf-8 -*-
-"""固定尺寸滑动窗口切图 + 生成 YOLO 检测数据集（SHP 驱动框 + geotransform 映射）。
 
-把 SHP 多边形边界（唯一真值）转成 YOLOv8 可直接训练的数据集。核心逻辑：
-
-  1. 每个滑坡的检测框 = 多边形在火星等距圆柱投影下的四至（AABB），
-     经 TIFF 的 geotransform 映射到像素空间（读 ModelTiepoint/ModelPixelScale，
-     不用 4°/宽高硬算）。bbox 跨图幅的滑坡在每个覆盖图幅各登记一次。
-  2. 滑坡按框尺度分两档，避开「大滑坡被滑动窗口切碎 → 满屏框」的硬伤：
-     - 中小滑坡（框长边 <= --max-side）：走固定 patch 滑动窗口求交；
-     - 大滑坡（框长边 > --max-side）：以框中心按自身尺度裁窗口，缩放到 patch。
-  3. 正样本 patch 分配 + 负样本（无滑坡背景）抽样 + 空间隔离划分：
-     - 默认（不传 --split-plan）：正样本按滑坡连通分量、负样本按空间网格块，
-       确定性划分，同一滑坡不跨 split；
-     - --split-plan <json>：整图幅分组划分（tile -> train/val/test）。同一张
-       4°×4° 图幅只进一个集合，跨图幅相连的图幅整组同侧；该 JSON 同时充当
-       图幅白名单（未下载完成的图幅天然被排除）。任一出框滑坡若涉及分属不同
-       split 的图幅，直接报错终止——那说明图幅分组没绑干净，仍是泄漏。
-  4. 输出 images/、labels/（YOLO txt 归一化格式）与 data.yaml。
-
-类别：SL=0, SP=1, FL=2, CL=3（对齐论文四分类）。
-
-用法：
-    python make_yolo_dataset.py
-    python make_yolo_dataset.py --patch 1024 --overlap 128 --neg-ratio 1 --max-side 819
-    python make_yolo_dataset.py --split-plan data/raw/tile_split_plan.json
-    python make_yolo_dataset.py --split-plan data/raw/tile_split_plan.json --out data/processed/yolo_tile
-"""
 import argparse
 import hashlib
 import json
@@ -34,6 +8,7 @@ from collections import Counter, defaultdict
 import random
 import re
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import shapefile
@@ -57,6 +32,22 @@ DEG = math.pi / 180.0
 
 MAX_WIN = 12000  # centered crop 最大窗口边长（px），避免单窗口内存过大
 
+GeoTransform = tuple[float, float, float, float, float, float]
+Bounds = tuple[float, float, float, float]
+LandslideBox = tuple[int, float, float, float, float, int]
+CropCoordinates = tuple[int, int] | tuple[int, int, int]
+PositivePatch = tuple[str, str, CropCoordinates, list[LandslideBox]]
+NegativePatch = tuple[str, str, tuple[int, int]]
+AssignedPatch = tuple[str, str, CropCoordinates, list[LandslideBox], str]
+AssignedNegativePatch = tuple[str, str, tuple[int, int], str]
+
+
+class TileBoxes(TypedDict):
+    W: int
+    H: int
+    small: list[LandslideBox]
+    big: list[LandslideBox]
+
 
 def discover_tifs(root: Path):
     found = {}
@@ -67,53 +58,60 @@ def discover_tifs(root: Path):
     return found
 
 
-def read_geotransform(tif_path):
-    """读 GeoTIFF ModelTiepoint + ModelPixelScale -> GDAL 六参 geotransform。
-
-    返回 (origin_x, pixel_w, 0, origin_y, 0, pixel_h)，pixel_h 取负（北在顶）。
-    """
+def read_geotransform(tif_path: str | Path) -> GeoTransform:
+    """从 GeoTIFF 读取图幅起点和像元大小，按 GDAL 六参数格式返回。"""
     with tifffile.TiffFile(str(tif_path)) as t:
         page = t.pages[0]
-        scale = page.tags[33550].value   # ModelPixelScale (sx, sy, sz)
-        tie = page.tags[33922].value     # ModelTiepoint (i, j, k, X, Y, Z)
-    return (tie[3], scale[0], 0.0, tie[4], 0.0, -scale[1])
+        if isinstance(page, tifffile.TiffFrame):
+            page = page.aspage()
+        scale = page.tags[33550].value   # 记录像元大小。
+        tie = page.tags[33922].value     # 记录影像和地图的对应点。
+    return tie[3], scale[0], 0.0, tie[4], 0.0, -scale[1]
 
 
-def lonlat_to_pixel(lon, lat, gt):
-    """经纬度（度）-> 像素坐标，走火星等距圆柱世界坐标 + geotransform。"""
+def lonlat_to_pixel(lon: float, lat: float, gt: GeoTransform) -> tuple[float, float]:
+    """用火星等距圆柱投影把经纬度转到平面，再换算成图像列号和行号。"""
     px = (R_MARS * lon * DEG - gt[0]) / gt[1]
     py = (R_MARS * lat * DEG - gt[3]) / gt[5]
     return px, py
 
 
-def aabb_to_pixel(aabb, gt, W, H):
-    """多边形四至 (lon_min, lat_min, lon_max, lat_max) -> 像素四至，裁剪到 [0,W]×[0,H]。"""
+def aabb_to_pixel(aabb: Bounds, gt: GeoTransform, width: int, height: int) -> Bounds:
+    """把多边形的外接范围换成像素位置，超出图幅的部分截到图像边缘。"""
     lon_min, lat_min, lon_max, lat_max = aabb
+    # 投影坐标减去图幅起点，再除以每个像元对应的距离。
     px0 = (R_MARS * lon_min * DEG - gt[0]) / gt[1]
     px1 = (R_MARS * lon_max * DEG - gt[0]) / gt[1]
-    py0 = (R_MARS * lat_max * DEG - gt[3]) / gt[5]  # 北边（lat_max → py 小）
-    py1 = (R_MARS * lat_min * DEG - gt[3]) / gt[5]  # 南边（lat_min → py 大）
+    # 北边在图像上方，对应较小的行号。
+    py0 = (R_MARS * lat_max * DEG - gt[3]) / gt[5]
+    py1 = (R_MARS * lat_min * DEG - gt[3]) / gt[5]
     if px0 > px1:
         px0, px1 = px1, px0
     if py0 > py1:
         py0, py1 = py1, py0
-    x0 = max(0.0, min(px0, W))
-    x1 = max(0.0, min(px1, W))
-    y0 = max(0.0, min(py0, H))
-    y1 = max(0.0, min(py1, H))
+    x0 = max(0.0, min(px0, width))
+    x1 = max(0.0, min(px1, width))
+    y0 = max(0.0, min(py0, height))
+    y1 = max(0.0, min(py1, height))
     return x0, y0, x1, y1
 
 
-def load_shp_polygons():
-    """读 SHP，返回 {source_id: (lon_min, lat_min, lon_max, lat_max)}。
+def load_shp_polygons() -> dict[int, Bounds]:
+    """从 SHP 取每个滑坡的外接经纬度范围，用原编号索引。
 
-    用 shape.bbox 直接取多边形四至（孔洞在外环内，不影响四至）。
+    这里用 shape.bbox 取最外侧的边界，内部孔洞不影响这个范围。
     """
-    sf = shapefile.Reader(str(SHP))
-    out = {}
-    for sr in sf.iterShapeRecords():
-        sid = int(sr.record["序号"])
-        out[sid] = tuple(sr.shape.bbox)
+    out: dict[int, Bounds] = {}
+    with shapefile.Reader(str(SHP)) as sf:
+        for sr in sf.iterShapeRecords():
+            record, shape = sr.record, sr.shape
+            if record is None or shape is None:
+                raise ValueError("滑坡 SHP 条目缺少属性或几何。")
+            source_id = record["序号"]
+            if not isinstance(source_id, (int, float, str)):
+                raise ValueError(f"滑坡 SHP 的序号无效：{source_id!r}")
+            lon_min, lat_min, lon_max, lat_max = shape.bbox
+            out[int(source_id)] = lon_min, lat_min, lon_max, lat_max
     return out
 
 
@@ -150,23 +148,28 @@ def split_of_grid(quad, gx, gy, val_ratio, test_ratio=0.0):
     return "train"
 
 
-def split_random_connected_component(pos_patches, neg_patches, val_ratio, test_ratio=0.0):
+def split_random_connected_component(
+    pos_patches: list[PositivePatch],
+    neg_patches: list[NegativePatch],
+    val_ratio: float,
+    test_ratio: float = 0.0,
+) -> tuple[list[AssignedPatch], list[AssignedNegativePatch]]:
     """默认划分：正样本按滑坡连通分量、负样本按空间网格块 -> split（确定性）。
 
     反泄漏：若某 patch 同时含 train 滑坡与 val 滑坡，仅强制归一边会把同一滑坡的
     影像泄到两侧。故先用并查集把「任一 patch 中共现的滑坡」连成连通分量，整个
     连通分量只进一个 split，任何滑坡所有 patch 必同侧。
     """
-    parent = {}
+    parent: dict[int, int] = {}
 
-    def find(a):
+    def find(a: int) -> int:
         parent.setdefault(a, a)
         while parent[a] != a:
             parent[a] = parent[parent[a]]
             a = parent[a]
         return a
 
-    def union(a, b):
+    def union(a: int, b: int) -> None:
         ra, rb = find(a), find(b)
         if ra != rb:
             parent[ra] = rb
@@ -190,7 +193,7 @@ def split_random_connected_component(pos_patches, neg_patches, val_ratio, test_r
     return tagged_pos, tagged_neg
 
 
-def load_split_plan(path: Path, discovered: dict) -> dict:
+def load_split_plan(path: Path, discovered: dict[str, Path]) -> dict[str, str]:
     """读整图幅划分方案（tile -> split），校验取值合法且图幅确实在磁盘上。
 
     返回的 plan 同时充当图幅白名单：不在其中的图幅（例如仍在下载的半成品）一律
@@ -209,25 +212,31 @@ def load_split_plan(path: Path, discovered: dict) -> dict:
     return plan
 
 
-def collect_tile_boxes(tifs, records, polys, max_side):
+def collect_tile_boxes(
+    tifs: dict[str, Path],
+    records: dict[int, dict],
+    polys: dict[int, Bounds],
+    max_side: float,
+) -> dict[str, TileBoxes]:
     """逐图幅登记检测框（供划分一致性校验与实际切图共用一次扫描）。
 
     返回 {tile: {"W", "H", "small", "big"}}。只读 TIFF 头（memmap 不加载像素）。
     """
-    out = {}
+    out: dict[str, TileBoxes] = {}
     for q, tif_path in tifs.items():
         arr = tifffile.memmap(tif_path)
-        H, W = arr.shape
+        height, width = arr.shape
         gt = read_geotransform(tif_path)
 
         # 由图幅 geotransform 反推经纬范围（不靠 4°/宽高硬算）
         k = R_MARS * DEG
         lon_west = gt[0] / k
-        lon_east = (gt[0] + W * gt[1]) / k
+        lon_east = (gt[0] + width * gt[1]) / k
         lat_north = gt[3] / k
-        lat_south = (gt[3] + H * gt[5]) / k
+        lat_south = (gt[3] + height * gt[5]) / k
 
-        small, big = [], []
+        small: list[LandslideBox] = []
+        big: list[LandslideBox] = []
         for sid, x in records.items():
             if x["type"] not in CLASSES:
                 continue
@@ -238,7 +247,7 @@ def collect_tile_boxes(tifs, records, polys, max_side):
             if (aabb[2] <= lon_west or aabb[0] >= lon_east
                     or aabb[3] <= lat_south or aabb[1] >= lat_north):
                 continue
-            x0, y0, x1, y1 = aabb_to_pixel(aabb, gt, W, H)
+            x0, y0, x1, y1 = aabb_to_pixel(aabb, gt, width, height)
             w = x1 - x0
             h = y1 - y0
             if w <= 1 or h <= 1:
@@ -247,18 +256,18 @@ def collect_tile_boxes(tifs, records, polys, max_side):
             cy = (y0 + y1) / 2
             box = (CLASSES[x["type"]], cx, cy, w, h, sid)
             (small if max(w, h) <= max_side else big).append(box)
-        out[q] = {"W": W, "H": H, "small": small, "big": big}
+        out[q] = {"W": width, "H": height, "small": small, "big": big}
     return out
 
 
-def assert_tile_split_consistency(tile_boxes, plan):
+def assert_tile_split_consistency(tile_boxes: dict[str, TileBoxes], plan: dict[str, str]):
     """任一出框滑坡涉及的图幅必须全部同 split，否则拒绝生成数据集。
 
     图幅分组的前提是：同一滑坡只在同 split 的图幅里出现。若某滑坡在 val 图幅与
     train 图幅上都出框，它自己就是跨 split 的泄漏通道，必须先把这些图幅并入同一
     组再切图，而不是照常输出。
     """
-    seq_tiles = defaultdict(set)
+    seq_tiles: dict[int, set[str]] = defaultdict(set)
     for q, tb in tile_boxes.items():
         for box in tb["small"] + tb["big"]:
             seq_tiles[box[5]].add(q)
@@ -269,8 +278,8 @@ def assert_tile_split_consistency(tile_boxes, plan):
         if len(splits) > 1:
             conflicts.append((seq, sorted(tiles), sorted(splits)))
     if conflicts:
-        for seq, tiles, splits in conflicts[:20]:
-            print(f"  泄漏: source_id={seq} 出框图幅 {tiles} 分属 {splits}")
+        for seq, conflict_tiles, conflict_splits in conflicts[:20]:
+            print(f"  泄漏: source_id={seq} 出框图幅 {conflict_tiles} 分属 {conflict_splits}")
         raise SystemExit(
             f"[图幅划分] {len(conflicts)} 条滑坡跨越不同 split 的图幅，"
             f"请把这些图幅并入同一组后再切图")
@@ -283,6 +292,8 @@ def slide_name(q2, kind, seq, params, patch):
     - win:   按窗口左上角 (px0,py0) 定位，本图幅内唯一；
     - center: 窗口坐标随图幅唯一定位，但不同大滑坡可能落到同窗口，
               追加 seq 保证每个滑坡一条独立文件，绝不互相覆盖。
+
+    patch 参数保留给已有调用。
     """
     if kind == "win":
         px0, py0 = params
@@ -319,7 +330,9 @@ def window_intersects_any_box(boxes, px0, py0, patch):
     return False
 
 
-def clip_box_to_window(box, px0, py0, patch):
+def clip_box_to_window(
+    box: LandslideBox, px0: int, py0: int, patch: int,
+) -> LandslideBox | None:
     """Clip one pixel-space box to a window and return YOLO-normalized values."""
     cls, cx, cy, w, h, seq = box
     bx0, by0 = cx - w / 2, cy - h / 2
@@ -335,7 +348,10 @@ def clip_box_to_window(box, px0, py0, patch):
             (ix1 - ix0) / patch, (iy1 - iy0) / patch, seq)
 
 
-def collect_center_crop_hits(primary_box, other_boxes, px0, py0, patch):
+def collect_center_crop_hits(
+    primary_box: LandslideBox, other_boxes: list[LandslideBox],
+    px0: int, py0: int, patch: int,
+) -> list[LandslideBox]:
     """Collect every labeled box intersecting a centered crop.
 
     Keep the crop's primary slide first so its source ID remains stable in the
@@ -431,7 +447,7 @@ def main():
 
     clear_output_dirs(out)
 
-    data = json.load(open(RAW / "mars_landslides.json", encoding="utf-8"))
+    data = json.loads((RAW / "mars_landslides.json").read_text(encoding="utf-8"))
     records = {int(x["source_id"]): x for x in data}
     polys = load_shp_polygons()
     missing = [s for s in records if s not in polys]
@@ -452,27 +468,27 @@ def main():
     #   kind="win"    params=(px0, py0)
     #   kind="center" params=(wx0, wy0, win)
     # neg_patches: (quad, kind, params)
-    pos_patches = []
-    neg_patches = []
+    pos_patches: list[PositivePatch] = []
+    neg_patches: list[NegativePatch] = []
 
     for q, tb in tile_boxes.items():
-        W, H = tb["W"], tb["H"]
+        width, height = tb["W"], tb["H"]
         small, big = tb["small"], tb["big"]
 
         # 1) 中小滑坡：滑动窗口求交
-        xs = make_starts(W, args.patch, stride)
-        ys = make_starts(H, args.patch, stride)
+        xs = make_starts(width, args.patch, stride)
+        ys = make_starts(height, args.patch, stride)
         for py0 in ys:
             for px0 in xs:
                 hit = []
-                for cls, cx, cy, w, h, seq in small:
-                    clipped = clip_box_to_window((cls, cx, cy, w, h, seq),
-                                                 px0, py0, args.patch)
+                for box in small:
+                    clipped = clip_box_to_window(box, px0, py0, args.patch)
                     if clipped is not None:
                         hit.append(clipped)
-                big_hit = [clip_box_to_window(box, px0, py0, args.patch)
-                           for box in big]
-                big_hit = [box for box in big_hit if box is not None]
+                big_hit = [
+                    clipped_box for box in big
+                    if (clipped_box := clip_box_to_window(box, px0, py0, args.patch)) is not None
+                ]
                 if big_hit:
                     # A window containing only a large slide is represented by
                     # its centered crop. If it also contains a small slide,
@@ -492,13 +508,13 @@ def main():
             # 窗口必须完整包住框：至少 side，最好 1.25 倍留边。
             # 旧版 min(side*1.25, MAX_WIN) 会把 >MAX_WIN 的框截断，
             # 这里只用图像边界兜底，保证不截断。内存上限由 MAX_WIN 拆块兜底（见下）。
-            win = int(min(max(side * 1.25, side), W, H))
+            win = int(min(max(side * 1.25, side), width, height))
             # 超大框超单窗口内存上限时，退化为多窗口拆分（保底 min_win）
             if win > MAX_WIN:
-                win = int(min(MAX_WIN, W, H))
+                win = int(min(MAX_WIN, width, height))
                 # 多窗口覆盖整个框：以 stride=win 横向/纵向平铺
-                xs0 = make_starts(W, win, win)
-                ys0 = make_starts(H, win, win)
+                xs0 = make_starts(width, win, win)
+                ys0 = make_starts(height, win, win)
                 xs0 = [x for x in xs0 if x < cx + w / 2 and x + win > cx - w / 2]
                 ys0 = [y for y in ys0 if y < cy + h / 2 and y + win > cy - h / 2]
                 for y0w in ys0:
@@ -515,8 +531,8 @@ def main():
                         pos_patches.append((q, "center", (x0w, y0w, win),
                                             hits))
                 continue
-            wx0 = int(max(0, min(cx - win / 2, W - win)))
-            wy0 = int(max(0, min(cy - win / 2, H - win)))
+            wx0 = int(max(0, min(cx - win / 2, width - win)))
+            wy0 = int(max(0, min(cy - win / 2, height - win)))
             hits = collect_center_crop_hits(
                 (cls, cx, cy, w, h, seq),
                 small + big,
@@ -545,21 +561,24 @@ def main():
     # 划分：plan 模式下 split 完全由 patch 所属图幅决定（跨图幅相连的图幅已整组
     # 同侧，一致性由 assert_tile_split_consistency 校验）；默认模式走滑坡连通
     # 分量 + 负样本空间网格块划分。
+    split_positive: list[AssignedPatch]
+    split_negative: list[AssignedNegativePatch]
     if plan is not None:
-        pos_patches = [p + (plan[p[0]],) for p in pos_patches]
-        neg_patches = [p + (plan[p[0]],) for p in neg_patches]
+        split_positive = [p + (plan[p[0]],) for p in pos_patches]
+        split_negative = [p + (plan[p[0]],) for p in neg_patches]
         mode = "整图幅分组划分"
     else:
-        pos_patches, neg_patches = split_random_connected_component(
+        split_positive, split_negative = split_random_connected_component(
             pos_patches, neg_patches, args.val_ratio, args.test_ratio)
         mode = "滑坡连通分量空间隔离划分"
 
-    n_train = sum(1 for p in pos_patches if p[4] == "train") + \
-              sum(1 for p in neg_patches if p[3] == "train")
-    n_val = sum(1 for p in pos_patches if p[4] == "val") + \
-            sum(1 for p in neg_patches if p[3] == "val")
-    n_test = sum(1 for p in pos_patches if p[4] == "test") + \
-             sum(1 for p in neg_patches if p[3] == "test")
+    # 空框列表表示背景裁片，写图和标签时可以使用同一种记录格式。
+    patches_to_write = list(split_positive)
+    patches_to_write.extend(
+        (tile, kind, coords, [], split) for tile, kind, coords, split in split_negative
+    )
+    patch_counts = Counter(p[-1] for p in patches_to_write)
+    n_train, n_val, n_test = patch_counts["train"], patch_counts["val"], patch_counts["test"]
     print(f"{mode}：正样本 {len(pos_patches)}、负样本 {len(neg_patches)}，"
           f"train {n_train} / val {n_val} / test {n_test}")
 
@@ -568,31 +587,27 @@ def main():
         (out / "labels" / split).mkdir(parents=True, exist_ok=True)
 
     tif_cache = {}
+    fnames = []
     count_pos = count_neg = 0
-    for kind_pl, p in [("pos", q) for q in pos_patches] + [("neg", q) for q in neg_patches]:
-        split = p[4] if kind_pl == "pos" else p[3]
-        q2 = p[0]
+    for q2, kind, coords, boxes, split in patches_to_write:
         if q2 not in tif_cache:
             tif_cache[q2] = tifffile.memmap(tifs[q2])
         arr = tif_cache[q2]
 
-        if p[1] == "win":
-            px0, py0 = p[2]
-            crop = arr[py0:py0 + args.patch, px0:px0 + args.patch].copy()
-            img = Image.fromarray(stretch(crop))
-            fname = slide_name(q2, "win", 0, (px0, py0), args.patch)
-        else:  # center
-            wx0, wy0, win = p[2]
-            crop = arr[wy0:wy0 + win, wx0:wx0 + win].copy()
-            img = Image.fromarray(stretch(crop))
-            img = img.resize((args.patch, args.patch), Image.LANCZOS)
-            seq = p[3][0][5]  # 该 centered patch 唯一滑坡的 source_id
-            fname = slide_name(q2, "center", seq, (wx0, wy0, win), args.patch)
+        px0, py0 = coords[0], coords[1]
+        win = coords[2] if len(coords) == 3 else args.patch
+        crop = arr[py0:py0 + win, px0:px0 + win].copy()
+        img = Image.fromarray(stretch(crop))
+        if kind == "center":
+            img = img.resize((args.patch, args.patch), Image.Resampling.LANCZOS)
+        seq = boxes[0][5] if kind == "center" else 0  # 中心裁片用主滑坡编号命名。
+        fname = slide_name(q2, kind, seq, coords, args.patch)
         img.save(out / "images" / split / f"{fname}.png")
+        fnames.append(fname)
 
-        if kind_pl == "pos":
+        if boxes:
             with (out / "labels" / split / f"{fname}.txt").open("w") as f:
-                for cls, nx, ny, nw, nh, _seq in p[3]:
+                for cls, nx, ny, nw, nh, _seq in boxes:
                     f.write(f"{cls} {nx:.6f} {ny:.6f} {nw:.6f} {nh:.6f}\n")
             count_pos += 1
         else:
@@ -611,40 +626,33 @@ def main():
     (out / "data.yaml").write_text("\n".join(yaml_lines) + "\n", encoding="utf-8")
 
     # 质量报告：类别/框分布、划分计数、满屏比、文件名唯一性、跨幅登记
-    n_total = len(pos_patches) + len(neg_patches)
-    per_class = Counter()
-    for p in pos_patches:
-        for b in p[3]:
-            per_class[CLASS_NAMES[b[0]]] += 1
-    # 唯一性校验：所有写出的文件名不得重复（覆盖会静默丢数据）
-    fnames = []
-    for kind_pl, p in [("pos", q) for q in pos_patches] + [("neg", q) for q in neg_patches]:
-        sp = p[4] if kind_pl == "pos" else p[3]
-        q2, kind = p[0], p[1]
-        args_b = p[2]
-        if kind == "win":
-            fnames.append(slide_name(q2, "win", 0, args_b, args.patch))
-        else:
-            seq = p[3][0][5]
-            fnames.append(slide_name(q2, "center", seq, args_b, args.patch))
+    per_class = Counter(CLASS_NAMES[box[0]] for box in all_boxes)
     dup = len(fnames) - len(set(fnames))
+    split_mode = "tile" if plan is not None else "connected_component"
+    split_plan = str(args.split_plan) if plan is not None else None
+    landslides_per_split = {
+        s: len({b[5] for p in split_positive if p[4] == s for b in p[3]})
+        for s in ("train", "val", "test")
+    }
+    boxes_per_class_per_split = {
+        s: dict(Counter(CLASS_NAMES[b[0]] for p in split_positive if p[4] == s for b in p[3]))
+        for s in ("train", "val", "test")
+    }
+    boxes_full_frame_ratio = round(full / len(all_boxes), 4) if all_boxes else 0.0
     report = {
         "patch": args.patch, "overlap": args.overlap, "max_side": max_side,
         "val_ratio": args.val_ratio, "test_ratio": args.test_ratio,
-        "split_mode": "tile" if plan is not None else "connected_component",
-        "split_plan": str(args.split_plan) if plan is not None else None,
+        "split_mode": split_mode,
+        "split_plan": split_plan,
         "tiles_per_split": {s: sorted(t for t, v in plan.items() if v == s)
                             for s in ("train", "val", "test")} if plan is not None else None,
         "quad_count": len(tifs),
         "pos_patches": len(pos_patches), "neg_patches": len(neg_patches),
         "split": {"train": n_train, "val": n_val, "test": n_test},
-        "landslides_per_split": {s: len({b[5] for p in pos_patches if p[4] == s for b in p[3]})
-                                 for s in ("train", "val", "test")},
-        "boxes_total": len(all_boxes), "boxes_full_frame_ratio": round(full / len(all_boxes), 4) if all_boxes else 0.0,
+        "landslides_per_split": landslides_per_split,
+        "boxes_total": len(all_boxes), "boxes_full_frame_ratio": boxes_full_frame_ratio,
         "boxes_per_class": dict(per_class),
-        "boxes_per_class_per_split": {
-            s: dict(Counter(CLASS_NAMES[b[0]] for p in pos_patches if p[4] == s for b in p[3]))
-            for s in ("train", "val", "test")},
+        "boxes_per_class_per_split": boxes_per_class_per_split,
         "duplicate_filenames": dup,
         "landslides_covered_seqs": len({b[5] for p in pos_patches for b in p[3]}),
     }
@@ -652,16 +660,16 @@ def main():
         json.dump(report, f, ensure_ascii=False, indent=2)
     (out / "quality_report.txt").write_text(
         f"patch={args.patch} overlap={args.overlap} max_side={max_side:.0f}\n"
-        f"划分模式 {report['split_mode']}（plan={report['split_plan']}）\n"
+        f"划分模式 {split_mode}（plan={split_plan}）\n"
         f"图幅 {len(tifs)} 个；正样本 {len(pos_patches)} 负样本 {len(neg_patches)}\n"
         f"划分 train={n_train} val={n_val} test={n_test}\n"
         f"出框滑坡数 train/val/test = "
-        f"{report['landslides_per_split']['train']}/{report['landslides_per_split']['val']}"
-        f"/{report['landslides_per_split']['test']}\n"
-        f"框总数 {len(all_boxes)}，满屏框占比 {report['boxes_full_frame_ratio']*100:.1f}%，"
+        f"{landslides_per_split['train']}/{landslides_per_split['val']}"
+        f"/{landslides_per_split['test']}\n"
+        f"框总数 {len(all_boxes)}，满屏框占比 {boxes_full_frame_ratio*100:.1f}%，"
         f"重复文件名 {dup}（应 0）\n"
         f"按类框数 {dict(per_class)}\n"
-        + "".join(f"  按类框数[{s}] {report['boxes_per_class_per_split'][s]}\n"
+        + "".join(f"  按类框数[{s}] {boxes_per_class_per_split[s]}\n"
                   for s in ("train", "val", "test")),
         encoding="utf-8")
 

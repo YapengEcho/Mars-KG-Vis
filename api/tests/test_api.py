@@ -75,6 +75,20 @@ def test_complete_catalog_preserves_contract_and_all_records(client):
     assert catalog["records"][0] == client.get("/api/landslides/demo-001").json()
 
 
+def test_catalog_charts_render_current_catalog_and_type_filter(client):
+    for kind in ("types", "latitude"):
+        url = "/api/catalog"
+        complete = client.get(url, params={"chart": kind, "version": "fixture-v1"})
+        filtered = client.get(url, params={"chart": kind, "version": "fixture-v1", "type": "FL"})
+        assert complete.status_code == filtered.status_code == 200
+        assert complete.headers["content-type"] == filtered.headers["content-type"] == "image/png"
+        assert complete.content.startswith(b"\x89PNG\r\n\x1a\n")
+        assert filtered.content.startswith(b"\x89PNG\r\n\x1a\n")
+        assert complete.content != filtered.content
+        assert client.get(url, params={"chart": kind, "version": "stale"}).status_code == 409
+        assert client.get(url, params={"chart": kind, "type": "unknown"}).status_code == 422
+
+
 def test_detail_preserves_mars_coordinates_and_unknown_values(client):
     response = client.get("/api/landslides/demo-001")
     assert response.status_code == 200
