@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import hashlib
 import json
 import math
 from collections import Counter, defaultdict
+from itertools import combinations
 import random
 import re
 from pathlib import Path
@@ -14,6 +14,11 @@ import numpy as np
 import shapefile
 import tifffile
 from PIL import Image
+
+if __package__:
+    from .check_tile_connectivity import build_components
+else:
+    from check_tile_connectivity import build_components
 
 BASE = Path(__file__).resolve().parents[2]
 RAW = BASE / "data" / "raw"
@@ -45,6 +50,7 @@ AssignedNegativePatch = tuple[str, str, tuple[int, int], str]
 class TileBoxes(TypedDict):
     W: int
     H: int
+    bounds: Bounds
     small: list[LandslideBox]
     big: list[LandslideBox]
 
@@ -115,84 +121,6 @@ def load_shp_polygons() -> dict[int, Bounds]:
     return out
 
 
-def _stable_hash(*parts):
-    """跨进程稳定的确定性哈希。
-
-    python 内置 hash() 受 PYTHONHASHSEED 影响、跨进程不可复现，不能用于划分。
-    这里用 sha256（取前 4 字节）保证同一输入永远得到同一 split。
-    """
-    s = "|".join(str(p) for p in parts).encode("utf-8")
-    return int.from_bytes(hashlib.sha256(s).digest()[:4], "big")
-
-
-def split_of_seq(seq, val_ratio, test_ratio=0.0):
-    """滑坡 source_id -> split（确定性、可复现），同一滑坡所有 patch 必同侧。
-
-    三档：train / val / test，依稳定哈希落在 [0,100) 内判定。
-    """
-    r = _stable_hash("seq", seq) % 100
-    if r < round(test_ratio * 100):
-        return "test"
-    if r < round((test_ratio + val_ratio) * 100):
-        return "val"
-    return "train"
-
-
-def split_of_grid(quad, gx, gy, val_ratio, test_ratio=0.0):
-    """负样本按空间网格块分组 -> split（确定性）。"""
-    r = _stable_hash("grid", quad, gx, gy) % 100
-    if r < round(test_ratio * 100):
-        return "test"
-    if r < round((test_ratio + val_ratio) * 100):
-        return "val"
-    return "train"
-
-
-def split_random_connected_component(
-    pos_patches: list[PositivePatch],
-    neg_patches: list[NegativePatch],
-    val_ratio: float,
-    test_ratio: float = 0.0,
-) -> tuple[list[AssignedPatch], list[AssignedNegativePatch]]:
-    """默认划分：正样本按滑坡连通分量、负样本按空间网格块 -> split（确定性）。
-
-    反泄漏：若某 patch 同时含 train 滑坡与 val 滑坡，仅强制归一边会把同一滑坡的
-    影像泄到两侧。故先用并查集把「任一 patch 中共现的滑坡」连成连通分量，整个
-    连通分量只进一个 split，任何滑坡所有 patch 必同侧。
-    """
-    parent: dict[int, int] = {}
-
-    def find(a: int) -> int:
-        parent.setdefault(a, a)
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    for p in pos_patches:
-        seqs = {b[5] for b in p[3]}
-        s0 = min(seqs)
-        for s in seqs:
-            union(s0, s)
-
-    comp_split = {}
-    tagged_pos = []
-    for p in pos_patches:
-        comp = find(min(b[5] for b in p[3]))
-        if comp not in comp_split:
-            comp_split[comp] = split_of_seq(comp, val_ratio, test_ratio)
-        tagged_pos.append(p + (comp_split[comp],))
-    tagged_neg = [p + (split_of_grid(p[0], p[2][0] // 4096, p[2][1] // 4096,
-                                     val_ratio, test_ratio),)
-                  for p in neg_patches]
-    return tagged_pos, tagged_neg
-
-
 def load_split_plan(path: Path, discovered: dict[str, Path]) -> dict[str, str]:
     """读整图幅划分方案（tile -> split），校验取值合法且图幅确实在磁盘上。
 
@@ -256,21 +184,76 @@ def collect_tile_boxes(
             cy = (y0 + y1) / 2
             box = (CLASSES[x["type"]], cx, cy, w, h, sid)
             (small if max(w, h) <= max_side else big).append(box)
-        out[q] = {"W": width, "H": height, "small": small, "big": big}
+        out[q] = {
+            "W": width, "H": height, "bounds": (lon_west, lat_south, lon_east, lat_north),
+            "small": small, "big": big,
+        }
     return out
 
 
-def assert_tile_split_consistency(tile_boxes: dict[str, TileBoxes], plan: dict[str, str]):
-    """任一出框滑坡涉及的图幅必须全部同 split，否则拒绝生成数据集。
-
-    图幅分组的前提是：同一滑坡只在同 split 的图幅里出现。若某滑坡在 val 图幅与
-    train 图幅上都出框，它自己就是跨 split 的泄漏通道，必须先把这些图幅并入同一
-    组再切图，而不是照常输出。
-    """
+def tiles_by_source(tile_boxes: dict[str, TileBoxes]) -> dict[int, set[str]]:
     seq_tiles: dict[int, set[str]] = defaultdict(set)
     for q, tb in tile_boxes.items():
         for box in tb["small"] + tb["big"]:
             seq_tiles[box[5]].add(q)
+    return seq_tiles
+
+
+def overlapping_tile_pairs(tile_boxes: dict[str, TileBoxes]):
+    # Ignore floating-point noise at a shared edge, far below one CTX pixel.
+    tolerance = 1e-9
+    footprints = [(name, tile["bounds"]) for name, tile in tile_boxes.items()]
+    for (left, (w1, s1, e1, n1)), (right, (w2, s2, e2, n2)) in combinations(footprints, 2):
+        if (min(e1, e2) - max(w1, w2) > tolerance
+                and min(n1, n2) - max(s1, s2) > tolerance):
+            yield left, right
+
+
+def make_tile_split_plan(
+    tile_boxes: dict[str, TileBoxes], positive_tiles: set[str],
+    val_ratio: float, test_ratio: float, seed: int,
+) -> dict[str, str]:
+    """Assign entire groups of tiles, including shared landslides and overlapping footprints."""
+    edges = list(tiles_by_source(tile_boxes).values())
+    edges.extend({left, right} for left, right in overlapping_tile_pairs(tile_boxes))
+    roots = build_components(edges)
+    components: dict[str, set[str]] = defaultdict(set)
+    for tile in tile_boxes:
+        components[roots.get(tile, tile)].add(tile)
+
+    positive_groups, background_groups = [], []
+    for group in sorted(components.values(), key=min):
+        if group & positive_tiles:
+            positive_groups.append(group)
+        else:
+            background_groups.append(group)
+
+    group_count = len(positive_groups)
+    required = 1 + int(val_ratio > 0) + int(test_ratio > 0)
+    if group_count < required:
+        raise SystemExit(f"[图幅划分] 只有 {group_count} 个含滑坡的独立图幅组，需要 {required} 个。"
+                         "请补充独立图幅；只导出训练集可设置 --val-ratio 0 --test-ratio 0。")
+
+    rng = random.Random(seed)
+    rng.shuffle(positive_groups)
+    plan: dict[str, str] = {}
+    for split, ratio, reserve in (("test", test_ratio, 1 + int(val_ratio > 0)), ("val", val_ratio, 1)):
+        if ratio:
+            count = min(max(1, round(group_count * ratio)), len(positive_groups) - reserve)
+            for group in positive_groups[:count]:
+                plan.update(dict.fromkeys(group, split))
+            positive_groups = positive_groups[count:]
+    for group in positive_groups:
+        plan.update(dict.fromkeys(group, "train"))
+    for group in background_groups:
+        split = rng.choices(("train", "val", "test"), (1 - val_ratio - test_ratio, val_ratio, test_ratio))[0]
+        plan.update(dict.fromkeys(group, split))
+    return plan
+
+
+def assert_tile_split_consistency(tile_boxes: dict[str, TileBoxes], plan: dict[str, str]):
+    """拒绝相互重叠或含有同一滑坡的图幅进入不同集合。"""
+    seq_tiles = tiles_by_source(tile_boxes)
 
     conflicts = []
     for seq, tiles in seq_tiles.items():
@@ -283,6 +266,10 @@ def assert_tile_split_consistency(tile_boxes: dict[str, TileBoxes], plan: dict[s
         raise SystemExit(
             f"[图幅划分] {len(conflicts)} 条滑坡跨越不同 split 的图幅，"
             f"请把这些图幅并入同一组后再切图")
+    for left, right in overlapping_tile_pairs(tile_boxes):
+        if plan[left] != plan[right]:
+            raise SystemExit(f"[图幅划分] 图幅 {left} 和 {right} 的实际覆盖范围重叠，"
+                             "请把这两个图幅分到同一集合。")
     return seq_tiles
 
 
@@ -422,14 +409,18 @@ def main():
     ap.add_argument("--neg-ratio", type=float, default=1.0, help="负样本 = 正样本 * ratio")
     ap.add_argument("--max-side", type=float, default=None,
                     help="框边长阈值(px)，超过走 centered crop；默认 0.8*patch")
-    ap.add_argument("--val-ratio", type=float, default=0.2)
+    ap.add_argument("--val-ratio", type=float, default=0.2,
+                    help="独立验证图幅组比例（默认 0.2）")
     ap.add_argument("--test-ratio", type=float, default=0.15,
-                    help="独立 test 集比例（空间隔离，默认 0.15）")
+                    help="独立测试图幅组比例（默认 0.15）")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--split-plan", default=None,
                     help="整图幅分组划分 JSON（tile -> train/val/test），同时充当图幅白名单")
     ap.add_argument("--out", default=str(OUT))
     args = ap.parse_args()
+    if not args.split_plan and not (0 <= args.val_ratio and 0 <= args.test_ratio
+                                    and args.val_ratio + args.test_ratio < 1):
+        ap.error("验证、测试比例须为非负数且相加小于 1。")
 
     out = Path(args.out)
     stride = args.patch - args.overlap
@@ -445,8 +436,6 @@ def main():
         plan = load_split_plan(Path(args.split_plan), tifs)
         tifs = {t: p for t, p in tifs.items() if t in plan}
 
-    clear_output_dirs(out)
-
     data = json.loads((RAW / "mars_landslides.json").read_text(encoding="utf-8"))
     records = {int(x["source_id"]): x for x in data}
     polys = load_shp_polygons()
@@ -458,11 +447,7 @@ def main():
 
     tile_boxes = collect_tile_boxes(tifs, records, polys, max_side)
     if plan is not None:
-        seq_tiles = assert_tile_split_consistency(tile_boxes, plan)
-        per_split = Counter(plan[q] for q in tile_boxes)
-        print("[图幅划分] 图幅数 " + " / ".join(
-            f"{s} {per_split[s]}" for s in ("train", "val", "test")))
-        print(f"[图幅划分] 出框滑坡 {len(seq_tiles)} 条，全部只落在单一 split（无跨幅泄漏）")
+        assert_tile_split_consistency(tile_boxes, plan)
 
     # pos_patches: (quad, kind, params, boxes_norm)
     #   kind="win"    params=(px0, py0)
@@ -558,19 +543,16 @@ def main():
     random.shuffle(neg_patches)
     neg_patches = neg_patches[:n_neg]
 
-    # 划分：plan 模式下 split 完全由 patch 所属图幅决定（跨图幅相连的图幅已整组
-    # 同侧，一致性由 assert_tile_split_consistency 校验）；默认模式走滑坡连通
-    # 分量 + 负样本空间网格块划分。
-    split_positive: list[AssignedPatch]
-    split_negative: list[AssignedNegativePatch]
-    if plan is not None:
-        split_positive = [p + (plan[p[0]],) for p in pos_patches]
-        split_negative = [p + (plan[p[0]],) for p in neg_patches]
-        mode = "整图幅分组划分"
-    else:
-        split_positive, split_negative = split_random_connected_component(
-            pos_patches, neg_patches, args.val_ratio, args.test_ratio)
-        mode = "滑坡连通分量空间隔离划分"
+    split_mode = "tile" if plan is not None else "tile_auto"
+    if plan is None:
+        plan = make_tile_split_plan(tile_boxes, {p[0] for p in pos_patches},
+                                    args.val_ratio, args.test_ratio, args.seed)
+
+    split_positive: list[AssignedPatch] = [p + (plan[p[0]],) for p in pos_patches]
+    split_negative: list[AssignedNegativePatch] = [p + (plan[p[0]],) for p in neg_patches]
+    per_split = Counter(plan.values())
+    print("[图幅划分] 图幅数 " + " / ".join(
+        f"{s} {per_split[s]}" for s in ("train", "val", "test")))
 
     # 空框列表表示背景裁片，写图和标签时可以使用同一种记录格式。
     patches_to_write = list(split_positive)
@@ -579,12 +561,10 @@ def main():
     )
     patch_counts = Counter(p[-1] for p in patches_to_write)
     n_train, n_val, n_test = patch_counts["train"], patch_counts["val"], patch_counts["test"]
-    print(f"{mode}：正样本 {len(pos_patches)}、负样本 {len(neg_patches)}，"
+    print(f"整图幅分组：正样本 {len(pos_patches)}、负样本 {len(neg_patches)}，"
           f"train {n_train} / val {n_val} / test {n_test}")
 
-    for split in ("train", "val", "test"):
-        (out / "images" / split).mkdir(parents=True, exist_ok=True)
-        (out / "labels" / split).mkdir(parents=True, exist_ok=True)
+    clear_output_dirs(out)
 
     tif_cache = {}
     fnames = []
@@ -628,8 +608,7 @@ def main():
     # 质量报告：类别/框分布、划分计数、满屏比、文件名唯一性、跨幅登记
     per_class = Counter(CLASS_NAMES[box[0]] for box in all_boxes)
     dup = len(fnames) - len(set(fnames))
-    split_mode = "tile" if plan is not None else "connected_component"
-    split_plan = str(args.split_plan) if plan is not None else None
+    split_plan = args.split_plan
     landslides_per_split = {
         s: len({b[5] for p in split_positive if p[4] == s for b in p[3]})
         for s in ("train", "val", "test")
@@ -642,10 +621,11 @@ def main():
     report = {
         "patch": args.patch, "overlap": args.overlap, "max_side": max_side,
         "val_ratio": args.val_ratio, "test_ratio": args.test_ratio,
+        "seed": args.seed,
         "split_mode": split_mode,
         "split_plan": split_plan,
         "tiles_per_split": {s: sorted(t for t, v in plan.items() if v == s)
-                            for s in ("train", "val", "test")} if plan is not None else None,
+                            for s in ("train", "val", "test")},
         "quad_count": len(tifs),
         "pos_patches": len(pos_patches), "neg_patches": len(neg_patches),
         "split": {"train": n_train, "val": n_val, "test": n_test},

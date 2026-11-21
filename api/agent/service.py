@@ -217,6 +217,7 @@ def iter_agent_events(
         }
         return
     client = llm.get_client()
+    tool_call_options = llm.tool_call_options()
     messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
     messages.extend(message.model_dump() for message in request.messages)
     records_map: dict = {}
@@ -244,6 +245,7 @@ def iter_agent_events(
                 tools=TOOL_SPECS,
                 tool_choice="auto",
                 stream=True,
+                **tool_call_options,
             )
             content_parts: list[str] = []
             pending_calls: dict[int, dict] = {}
