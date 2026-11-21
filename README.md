@@ -84,7 +84,7 @@ python scripts/import_catalog_sqlite.py --input examples/catalog.demo.json --out
 
 ```dotenv
 LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-flash
 DEEPSEEK_API_KEY=<你的服务端密钥>
 ```
 
@@ -111,7 +111,7 @@ cd android
 
 Windows使用 `gradlew.bat assembleDebug`。输出位于 `app/build/outputs/apk/debug/`。
 
-也可在GitHub Actions中手动运行 `Android debug build`，完成后下载 `mars-atlas-debug` 安装包产物。
+也可在 GitHub Actions 中手动运行 `Android debug build`，完成后下载 `mars-atlas-debug` 安装包。CI 默认使用线上项目 API。部署到其他地址时，在仓库的 Actions 变量 `MARS_ANDROID_API_BASE_URL` 设置 HTTPS 服务地址，重新构建后应用。后端的 `MARS_CORS_ORIGINS` 需包含 Android WebView 来源 `https://localhost`，反向代理需将 `OPTIONS` 请求转给 API。
 
 ## 检查
 

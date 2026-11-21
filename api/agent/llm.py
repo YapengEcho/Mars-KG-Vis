@@ -14,13 +14,19 @@ except ImportError:  # pragma: no cover - openai is an optional runtime dependen
     OpenAI = None
     SDK_AVAILABLE = False
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-flash"
 DEEPSEEK_HOST = "api.deepseek.com"
 def _host(base_url: str) -> str:
     try:
         return (urlparse(base_url).hostname or "").lower()
     except ValueError:
         return ""
+
+
+def _is_deepseek_host(host: str) -> bool:
+    return host == DEEPSEEK_HOST or host.endswith("." + DEEPSEEK_HOST)
+
+
 def api_key_for(base_url: str) -> str:
     """Return the key belonging to the provider behind ``base_url``.
 
@@ -30,14 +36,17 @@ def api_key_for(base_url: str) -> str:
     host = _host(base_url)
     if not host:
         return ""
-    if host == DEEPSEEK_HOST or host.endswith("." + DEEPSEEK_HOST):
+    if _is_deepseek_host(host):
         return os.environ.get("DEEPSEEK_API_KEY", "").strip()
     return os.environ.get("OPENAI_API_KEY", "").strip()
 def settings() -> dict:
     base_url = (os.environ.get("LLM_BASE_URL") or DEFAULT_BASE_URL).strip()
+    model = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
+    if _is_deepseek_host(_host(base_url)) and model in {"deepseek-chat", "deepseek-reasoner"}:
+        model = DEFAULT_MODEL
     return {
         "base_url": base_url,
-        "model": os.environ.get("LLM_MODEL", DEFAULT_MODEL),
+        "model": model,
         "api_key": api_key_for(base_url),
         "timeout": float(os.environ.get("LLM_TIMEOUT", "30")),
     }
@@ -45,6 +54,15 @@ def is_configured() -> bool:
     return SDK_AVAILABLE and bool(settings()["api_key"])
 def model_name() -> str:
     return settings()["model"]
+
+
+def tool_call_options() -> dict:
+    if _is_deepseek_host(_host(settings()["base_url"])):
+        # Tool results can be sent back with ordinary chat history in non-thinking mode.
+        return {"extra_body": {"thinking": {"type": "disabled"}}}
+    return {}
+
+
 def get_client():
     if not is_configured():
         return None

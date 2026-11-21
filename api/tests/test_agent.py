@@ -1,5 +1,6 @@
 """Tests for the conversational agent and its tools."""
 import json
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 from api.main import create_app
 from api.schemas import Catalog
@@ -212,14 +213,53 @@ def test_openai_key_is_not_sent_to_default_deepseek_host(monkeypatch):
 def test_deepseek_key_is_used_for_deepseek_host(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
     assert llm.settings()["api_key"] == "sk-deepseek"
+    assert llm.model_name() == "deepseek-flash"
     assert llm.is_configured() is True
+
+
+def test_deepseek_tool_round_uses_non_thinking_mode(monkeypatch):
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("LLM_MODEL", "deepseek-chat")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
+    calls = []
+
+    def create(**request):
+        calls.append(request["extra_body"])
+        assert request["model"] == "deepseek-flash"
+        assert request["extra_body"] == {"thinking": {"type": "disabled"}}
+        if len(calls) == 1:
+            tool_call = SimpleNamespace(
+                id="stats-1", index=0,
+                function=SimpleNamespace(name="get_stats", arguments='{"type":"SL"}'),
+            )
+            delta = SimpleNamespace(content=None, tool_calls=[tool_call])
+        else:
+            tool = request["messages"][-1]
+            assert tool["tool_call_id"] == "stats-1"
+            assert json.loads(tool["content"])["total"] == 1
+            delta = SimpleNamespace(content="目录中有一处滑移型。", tool_calls=None)
+        return iter([SimpleNamespace(choices=[SimpleNamespace(delta=delta)])])
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    monkeypatch.setattr(llm, "get_client", lambda: client)
+    question = ChatRequest(messages=[{"role": "user", "content": "请查目录再核对滑移型的数量。"}])
+    reply = run_agent(question, make_catalog(), KeywordRetriever([]), TraceRecorder())
+
+    assert len(calls) == 2
+    assert reply.status == "ok"
+    assert reply.answer == "目录中有一处滑移型。"
+    assert reply.toolCalls[0].ok
+
+
 def test_key_follows_explicit_provider_address(monkeypatch):
     monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek")
     assert llm.settings()["api_key"] == "sk-openai"
+    assert llm.tool_call_options() == {}
 def _messages(count: int) -> list[dict]:
     return [{"role": "user", "content": f"message {index}"} for index in range(count)]
 def test_agent_accepts_message_list_at_limit(monkeypatch):
