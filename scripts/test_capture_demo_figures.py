@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from PIL import Image
 
@@ -92,6 +95,63 @@ class ReplacementTest(unittest.TestCase):
         self.assertIsNone(meta["upscale"])
         self.assertAlmostEqual(meta["fileScale"], round(window_m / 1800, 3), places=3)
         self.assertEqual(meta["size"], [1800, 1500])
+
+
+class RerunTest(unittest.TestCase):
+    """A hand-placed crop must survive repeated reruns, not just the first one."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.out = Path(self._tmp.name) / "week5"
+        self.name = "demo-ctx-01-ls0493.png"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _run(self) -> int:
+        argv = ["capture_demo_figures.py", "--out", str(self.out), "--skip-shots"]
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+            return figures.main()
+
+    def _manifest(self) -> dict:
+        return json.loads((self.out / "figures-manifest.json").read_text(encoding="utf-8"))
+
+    def _mode(self) -> str:
+        entry = next(item for item in self._manifest()["demoInputs"] if item["file"] == self.name)
+        return entry["sourceMode"]
+
+    def test_two_reruns_keep_the_replacement(self) -> None:
+        self.assertEqual(self._run(), 0)
+        target = self.out / self.name
+        Image.new("L", (1500, 1500), 128).save(target)
+
+        self.assertEqual(self._run(), 0)
+        with Image.open(target) as image:
+            self.assertEqual(image.size, (1500, 1500))
+        self.assertEqual(self._mode(), "replacement")
+
+        self.assertEqual(self._run(), 0)
+        with Image.open(target) as image:
+            self.assertEqual(image.size, (1500, 1500), "第二次重跑把原生裁片覆盖成放大图了")
+        entry = next(item for item in self._manifest()["demoInputs"] if item["file"] == self.name)
+        self.assertEqual(entry["sourceMode"], "replacement")
+        self.assertIsNone(entry["upscale"])
+        self.assertAlmostEqual(entry["fileScale"], round(190.9 * figures.PREVIEW_SIDE / 1500, 3), places=1)
+
+    def test_native_dir_copy_survives_rerun_without_dir(self) -> None:
+        native = Path(self._tmp.name) / "native"
+        native.mkdir()
+        Image.new("L", (1600, 1600), 128).save(native / self.name)
+        argv = ["capture_demo_figures.py", "--out", str(self.out), "--skip-shots", "--native-dir", str(native)]
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(figures.main(), 0)
+        self.assertEqual(self._mode(), "native")
+
+        # the copied file stays in --out even when --native-dir is not passed again
+        self.assertEqual(self._run(), 0)
+        with Image.open(self.out / self.name) as image:
+            self.assertEqual(image.size, (1600, 1600))
+        self.assertEqual(self._mode(), "native")
 
 
 if __name__ == "__main__":

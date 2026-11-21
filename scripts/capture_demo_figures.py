@@ -118,16 +118,24 @@ def verify_preview(source: Path, sample: dict) -> list[str]:
 
 
 def replacement_of(name: str, out: Path, native_dir: Path | None, previous: dict[str, dict]) -> tuple[Path, str] | None:
-    """A native crop wins over the upscaled preview; a hand-placed file is kept as-is."""
+    """A native crop wins over the upscaled preview; a hand-placed file stays hand-placed.
+
+    Two signals count as "not ours": the previous manifest recorded a native/replacement
+    source, or the file's hash differs from what the manifest recorded for a preview. The
+    first one matters on the second and later reruns, where the hash does match.
+    """
     if native_dir is not None:
         candidate = native_dir / name
         if candidate.exists():
             return candidate, "native"
     target = out / name
-    if target.exists():
-        recorded = previous.get(name, {}).get("sha256")
-        if recorded != sha256_of(target):
-            return target, "replacement"
+    if not target.exists():
+        return None
+    recorded = previous.get(name, {})
+    if recorded.get("sourceMode") in ("native", "replacement"):
+        return target, str(recorded["sourceMode"])
+    if recorded.get("sha256") != sha256_of(target):
+        return target, "replacement"
     return None
 
 
