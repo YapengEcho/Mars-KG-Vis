@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ImagePlus, ScanLine, X } from '@lucide/vue'
 import { fetchCapabilities } from '../services/api'
 import { submitDetection } from '../services/recognition'
+const route = useRoute()
 const router = useRouter()
 const available = ref(false)
 const serviceText = ref('正在检查检测服务…')
@@ -84,7 +85,7 @@ async function submit() {
   message.value = ''
   try {
     const task = await submitDetection(file.value)
-    if (active) {
+    if (active && route.query.mode === 'detect') {
       clear()
       await router.replace({ path: '/recognize', query: { mode: 'detect', task: task.taskId } })
     }

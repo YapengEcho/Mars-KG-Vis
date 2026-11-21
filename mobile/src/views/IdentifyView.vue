@@ -138,7 +138,7 @@ async function submit() {
   const sample = sampleById(selectedSampleId.value)
   try {
     const task = await submitRecognition(file.value, sample?.roi)
-    if (active) {
+    if (active && mode.value === 'classify') {
       clear()
       await router.replace({
         path: '/recognize',

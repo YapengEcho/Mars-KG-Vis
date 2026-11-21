@@ -34,22 +34,27 @@ const deleting = ref('')
 const service = ref<'checking' | 'connected' | 'offline'>(apiBase ? 'checking' : 'offline')
 const serviceLabel = { checking: '检查中', connected: '已连接', offline: '未连接' }
 
+let loadId = 0
 async function load(more = false) {
   if (loading.value) return
+  const request = ++loadId
+  const requestedKind = kind.value
   loading.value = true
   error.value = ''
   expired.value = false
   try {
     const next = more ? page.value + 1 : 1
-    const result = await recognitionHistory(next, kind.value)
+    const result = await recognitionHistory(next, requestedKind)
+    if (request !== loadId) return
     tasks.value = more ? [...tasks.value, ...result.items] : result.items
     total.value = result.total
     page.value = next
   } catch (e) {
+    if (request !== loadId) return
     error.value = e instanceof Error ? e.message : '读取记录失败。'
     expired.value = e instanceof RecognitionError && e.code === 'AUTH_REQUIRED'
   } finally {
-    loading.value = false
+    if (request === loadId) loading.value = false
   }
 }
 async function remove(id: string) {
@@ -81,6 +86,8 @@ function resetSession() {
 function switchKind(next: HistoryKind) {
   if (kind.value === next) return
   kind.value = next
+  loadId += 1
+  loading.value = false
   tasks.value = []
   total.value = 0
   page.value = 1
