@@ -32,6 +32,7 @@ REPO = Path(__file__).resolve().parent.parent
 SAMPLES = REPO / "mobile" / "public" / "samples"
 CONTENT = REPO / "mobile" / "src" / "content" / "atlas.json"
 SUBSET = REPO / "examples" / "catalog.real-subset.json"
+SAMPLE_INDEX = REPO / "examples" / "recognition.samples.json"
 FONT_REGULAR = r"C:\Windows\Fonts\msyh.ttc"
 FONT_BOLD = r"C:\Windows\Fonts\msyhbd.ttc"
 
@@ -54,6 +55,7 @@ DEMO_CASES = (
     ("ls_0597", "demo-ctx-03-ls0597.png", "FL"),
 )
 UPSCALE = 8
+PREVIEW_SIDE = 224
 MAX_EDGE = 2048
 MAX_BYTES = 8 * 1024 * 1024
 
@@ -90,22 +92,84 @@ def scale_of(case: dict) -> float:
     return float(str(case["previewScale"]).split()[0])
 
 
-def demo_canvas(source: Path, out: Path) -> dict:
+def sample_index(path: Path = SAMPLE_INDEX) -> dict[str, dict]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    records = payload["records"] if isinstance(payload, dict) else payload
+    return {str(item["id"]): item for item in records}
+
+
+def verify_preview(source: Path, sample: dict) -> list[str]:
+    """Check a public preview against the published sample list before using it."""
+    problems: list[str] = []
+    sid = sample["id"]
+    digest = sha256_of(source)
+    if digest != sample["sha256"]:
+        problems.append(
+            f"{sid}: 源图 SHA-256 与公开样例清单不一致"
+            f"（清单 {sample['sha256'][:12]}…，实际 {digest[:12]}…），疑似同名图混入，本次不生成"
+        )
+    with Image.open(source) as image:
+        if [image.width, image.height] != [sample["width"], sample["height"]]:
+            problems.append(
+                f"{sid}: 源图尺寸 {image.width}×{image.height} 与清单 "
+                f"{sample['width']}×{sample['height']} 不一致"
+            )
+    return problems
+
+
+def replacement_of(name: str, out: Path, native_dir: Path | None, previous: dict[str, dict]) -> tuple[Path, str] | None:
+    """A native crop wins over the upscaled preview; a hand-placed file is kept as-is."""
+    if native_dir is not None:
+        candidate = native_dir / name
+        if candidate.exists():
+            return candidate, "native"
+    target = out / name
+    if target.exists():
+        recorded = previous.get(name, {}).get("sha256")
+        if recorded != sha256_of(target):
+            return target, "replacement"
+    return None
+
+
+def describe_native(path: Path, case: dict, mode: str) -> dict:
+    window_m = scale_of(case) * PREVIEW_SIDE
+    with Image.open(path) as image:
+        size = [image.width, image.height]
+    return {
+        "file": path.name,
+        "source": path.name,
+        "sourceSize": size,
+        "sourceSha256": sha256_of(path),
+        "sourceMode": mode,
+        "upscale": None,
+        "size": size,
+        "bytes": path.stat().st_size,
+        "sha256": sha256_of(path),
+        "windowM": round(window_m, 2),
+        "fileScale": round(window_m / max(size[0], 1), 3),
+    }
+
+
+def demo_canvas(source: Path, out: Path, case: dict) -> dict:
     image = Image.open(source).convert("L")
     size = image.width * UPSCALE
     if size > MAX_EDGE:
         raise ValueError(f"{source.name}: 放大后 {size} 超过 {MAX_EDGE} 像素上限")
     out.parent.mkdir(parents=True, exist_ok=True)
     image.resize((size, size), Image.Resampling.LANCZOS).save(out, optimize=True)
+    window_m = scale_of(case) * PREVIEW_SIDE
     return {
         "file": out.name,
         "source": str(source.relative_to(REPO)) if source.is_relative_to(REPO) else str(source),
         "sourceSize": list(image.size),
         "sourceSha256": sha256_of(source),
+        "sourceMode": "preview",
         "upscale": UPSCALE,
         "size": [size, size],
         "bytes": out.stat().st_size,
         "sha256": sha256_of(out),
+        "windowM": round(window_m, 2),
+        "fileScale": round(window_m / size, 3),
     }
 
 
@@ -114,12 +178,19 @@ def demo_sheet(inputs: list[dict], out: Path) -> None:
     image = Image.new("RGB", (width, height), BG)
     draw = ImageDraw.Draw(image)
     draw.text((56, 44), "第 5 周演示输入：三张 CTX 裁图", font=font(34, True), fill=TEXT)
-    draw.text(
-        (56, 96),
-        f"每张都是 224×224 公开预览按 {UPSCALE} 倍放大到 {224 * UPSCALE}×{224 * UPSCALE}，满足上传上限，便于滑动窗口检出多个候选",
-        font=font(19),
-        fill=MUTED,
-    )
+    upscaled = [meta for meta in inputs if meta.get("sourceMode") == "preview"]
+    native = [meta for meta in inputs if meta.get("sourceMode") != "preview"]
+    if not native:
+        header = (
+            f"每张都是 {PREVIEW_SIDE}×{PREVIEW_SIDE} 公开预览按 {UPSCALE} 倍放大到 "
+            f"{PREVIEW_SIDE * UPSCALE}×{PREVIEW_SIDE * UPSCALE}，满足上传上限，便于滑动窗口检出多个候选"
+        )
+    else:
+        header = (
+            f"{len(upscaled)} 张是公开预览放大 {UPSCALE} 倍、{len(native)} 张是原生裁图替换；"
+            f"尺寸与体积均满足上传上限（最长边 ≤{MAX_EDGE}、≤8 MiB）"
+        )
+    draw.text((56, 96), header, font=font(19), fill=MUTED)
     thumb, left = 260, 56
     for index, meta in enumerate(inputs):
         x = left + index * (thumb + 40)
@@ -138,17 +209,26 @@ def demo_sheet(inputs: list[dict], out: Path) -> None:
         for line in wrap(draw, meta["subtitle"], font(15), thumb):
             draw.text((x, caption_y), line, font=font(15), fill=MUTED)
             caption_y += 24
+        if meta.get("sourceMode") == "preview":
+            scale_line = f"原窗口 {meta['sourceScale']:.1f} m/像素 · 放大 {meta['upscale']}×"
+        else:
+            mode = "原生裁图" if meta.get("sourceMode") == "native" else "替换裁片"
+            scale_line = f"{mode} {meta['fileScale']:.1f} m/像素 · 窗口不变"
         draw.text(
             (x, caption_y + 4),
-            f"{meta['size'][0]}×{meta['size'][1]} · 原窗口 {meta['sourceScale']:.1f} m/像素",
+            f"{meta['size'][0]}×{meta['size'][1]}",
             font=font(15),
             fill=MUTED,
         )
+        caption_y += 26
+        for line in wrap(draw, scale_line, font(15), thumb):
+            draw.text((x, caption_y + 4), line, font=font(15), fill=MUTED)
+            caption_y += 24
     notes = [
         "用法：在移动端「识别」页选择其中一张上传，等候选框，再点开候选看四类分数与待复核标记。",
         "边界：放大不增加真实分辨率，等效分辨率变成原窗口的 1/8；分数只用于联调，不能当精度结论。",
-        "来源：裁片取自交接包 03_images/train224 的公开 8 例预览，未使用私有影像，仓库里也不存影像资源。",
-        "替换：崔提供原生 6 m CTX 裁图后，用同名文件替换即可，尺寸要求与上传上限一致（最长边 ≤2048 像素）。",
+        "来源：裁片取自交接包 03_images/train224 的公开 8 例预览，生成前按公开样例清单核对 SHA-256，对不上直接中止。",
+        "替换：原生 6 m CTX 裁图按同名放进 --out 或 --native-dir 后重跑，脚本保留原生裁片、不再放大，并刷新这张图与清单。",
     ]
     y = 600
     draw.text((56, y), "怎么用、怎么讲、边界在哪", font=font(24, True), fill=TEXT)
@@ -240,11 +320,13 @@ def describe(path: Path) -> dict:
     }
 
 
-def screenshots(base_url: str, out_dir: Path, cdp: Path, routes: dict[str, str]) -> list[dict]:
+def screenshots(
+    base_url: str, out_dir: Path, cdp: Path, routes: dict[str, str], problems: list[str]
+) -> list[dict]:
     rows = []
     for name, route in routes.items():
         target = out_dir / name
-        subprocess.run(
+        result = subprocess.run(
             [
                 sys.executable,
                 str(cdp),
@@ -259,8 +341,15 @@ def screenshots(base_url: str, out_dir: Path, cdp: Path, routes: dict[str, str])
                 "--dpr",
                 "2",
             ],
-            check=True,
+            capture_output=True,
+            text=True,
         )
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout).strip().splitlines()
+            problems.append(f"{name}: 截图失败（{message[-1] if message else '无输出'}）")
+            if target.exists():
+                target.unlink()
+            continue
         rows.append(
             {
                 "file": name,
@@ -277,6 +366,8 @@ def main() -> int:
     parser.add_argument("--base-url", default="", help="移动端地址；给出时同时截图")
     parser.add_argument("--content", default=str(CONTENT), help="atlas.json 路径")
     parser.add_argument("--samples", default=str(SAMPLES), help="公开预览目录")
+    parser.add_argument("--sample-index", default=str(SAMPLE_INDEX), help="公开样例清单（含 SHA-256）")
+    parser.add_argument("--native-dir", default="", help="原生裁片目录；同名文件优先于放大预览")
     parser.add_argument("--cdp", default=str(REPO / "scripts" / "cdp_screenshot.py"), help="截图脚本")
     parser.add_argument("--skip-shots", action="store_true", help="只生成演示输入与图表")
     args = parser.parse_args()
@@ -286,22 +377,51 @@ def main() -> int:
     content = json.loads(Path(args.content).read_text(encoding="utf-8"))
     cases = {case["landslideId"]: case for case in content["cases"]}
     allowed = public_ids()
+    samples = sample_index(Path(args.sample_index))
+    native_dir = Path(args.native_dir) if args.native_dir else None
     problems: list[str] = []
+
+    manifest_path = out / "figures-manifest.json"
+    previous: dict[str, dict] = {}
+    if manifest_path.exists():
+        try:
+            old = json.loads(manifest_path.read_text(encoding="utf-8"))
+            previous = {item["file"]: item for item in old.get("demoInputs", [])}
+        except (ValueError, KeyError):
+            previous = {}
 
     manifest: dict = {"demoInputs": [], "figures": [], "problems": problems}
     sheet_inputs = []
     for sid, name, type_code in DEMO_CASES:
-        source = Path(args.samples) / f"{sid}.png"
-        if not source.exists():
-            problems.append(f"{sid}: 缺少公开预览 {source}")
-            continue
+        case = cases[sid]
         number = int(sid.split("_")[1])
         if number not in allowed:
             problems.append(f"{sid}: 不在公开子集里，不能作为演示输入")
-        meta = demo_canvas(source, out / name)
-        if meta["size"][0] > MAX_EDGE or meta["bytes"] > MAX_BYTES:
+        replacement = replacement_of(name, out, native_dir, previous)
+        if replacement is not None:
+            path, mode = replacement
+            if mode == "native":
+                target = out / name
+                if path.resolve() != target.resolve():
+                    target.write_bytes(path.read_bytes())
+                path = target
+            meta = describe_native(path, case, mode)
+        else:
+            source = Path(args.samples) / f"{sid}.png"
+            if not source.exists():
+                problems.append(f"{sid}: 缺少公开预览 {source}")
+                continue
+            sample = samples.get(sid)
+            if sample is None:
+                problems.append(f"{sid}: 公开样例清单里没有这条，不能作为演示输入")
+                continue
+            source_problems = verify_preview(source, sample)
+            if source_problems:
+                problems.extend(source_problems)
+                continue
+            meta = demo_canvas(source, out / name, case)
+        if meta["size"][0] > MAX_EDGE or max(meta["size"]) > MAX_EDGE or meta["bytes"] > MAX_BYTES:
             problems.append(f"{name}: 尺寸或体积超过上传上限")
-        case = cases[sid]
         meta.update(
             {
                 "sid": sid,
@@ -331,8 +451,10 @@ def main() -> int:
             "shot-compare.png": "#/atlas/compare",
             "shot-atlas-type.png": "#/atlas/type/SP",
         }
-        manifest["screenshots"] = screenshots(args.base_url, out, Path(args.cdp), routes)
-        manifest["figures"] += [describe(out / name) for name in routes]
+        manifest["screenshots"] = screenshots(
+            args.base_url, out, Path(args.cdp), routes, problems
+        )
+        manifest["figures"] += [describe(out / name) for name in routes if (out / name).exists()]
 
     (out / "figures-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"

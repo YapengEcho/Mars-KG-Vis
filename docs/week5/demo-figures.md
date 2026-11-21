@@ -21,7 +21,7 @@
 | S5 | `shot-compare.png` | 860×3240 | 两类对比 | 讲怎么区分 |
 | S6 | `shot-atlas-type.png` | 860×2742 | 类型页（SP） | 讲四类说明与引用 |
 
-截图均为 430×932 逻辑视口、2 倍像素比、无头 Chrome 生成，整页高度截取，底部导航在画面底部而不是压在内容上。
+D1–D3 的尺寸是默认放大版本的；换成原生裁片后以 `figures-manifest.json` 的 `size` 为准。截图均为 430×932 逻辑视口、2 倍像素比、无头 Chrome 生成，整页高度截取，底部导航在画面底部而不是压在内容上。
 
 ## 二、演示输入：来源核对
 
@@ -34,7 +34,8 @@
 | ls_0597 | FL 流动型 | 1.9 km² | 4.3 km | 19.3 m/像素 | 2.4 m/像素 | E-080_N-12 | 公开子集（有 224 预览） |
 
 - 窗口边长取自 `image_index.json` 的 `native_window_world_m`，是人工框长边的 1.5 倍，逐张不同，没有统一值。
-- 源文件 SHA-256（前 16 位）依次为 `918cba78b469909a`、`86b5be259fcb5c8c`、`b9f857507d423fc8`，核对脚本会对公开清单与交接包做双边校验。
+- 源文件 SHA-256（前 16 位）依次为 `918cba78b469909a`、`86b5be259fcb5c8c`、`b9f857507d423fc8`。
+- **出图前先校验**：脚本按 `examples/recognition.samples.json` 核对每张源预览的 SHA-256 与 224×224 尺寸，对不上就打印「疑似同名图混入」并跳过这张，不做任何放大或覆盖（退出码 1）。
 - 生成规则：224×224 预览按 8 倍 LANCZOS 放大到 1792×1792，8 位灰度 PNG，单张 0.5–0.7 MB，最长边与体积都在上传上限内（≤2048 像素、≤8 MiB）。
 
 ### 为什么要放大到 1792
@@ -56,9 +57,20 @@
 
 ### 崔提供原生 6 m 裁图后怎么替换
 
-1. 用同名文件覆盖交付包里的 `demo-ctx-01/02/03-*.png`（保持 1792×1792 或任意 ≤2048 的正方形）。
-2. 更新第二节表格里的「原窗口尺度 / 放大后等效尺度」两列；若为新裁片，还要补窗口边长与 CTX 图幅。
-3. 重跑 `python scripts/capture_demo_figures.py --out output/week5`，F1 与 `figures-manifest.json` 里的 SHA-256 会自动更新。
+原生裁片不会被放大预览覆盖，两条路径任选：
+
+1. **同名放进输出目录**：把裁片命名为 `demo-ctx-01-ls0493.png` 等，直接覆盖 `--out` 里的同名文件，重跑脚本即可。
+2. **单独目录**：把裁片放进任意目录，重跑时加 `--native-dir <目录>`，脚本按同名文件取用。
+
+两种情况下脚本都会：
+
+- 保留原生文件本身，**不再放大**（`figures-manifest.json` 里记为 `sourceMode: native` 或 `replacement`，`upscale` 为 null）；
+- 按「窗口边长 ÷ 裁片边长」重算这张图的 m/像素（`fileScale`），窗口边长仍取编目里的 1.5 倍框；
+- 用新裁片重画 F1 说明图（标题行会写「N 张原生裁图替换」），并刷新清单里的尺寸、体积与 SHA-256。
+
+只有走放大路径的输入才会做公开清单哈希校验；已替换的原生裁片是本地文件，不在公开清单里，脚本按「文件哈希与清单不符且不是本次生成」判定为替换件并保留。替换后若想回到放大版本，删掉该文件再重跑即可。
+
+细节：`--native-dir` 优先于输出目录里的同名文件；判断「是不是本次生成」的依据是上一次 `figures-manifest.json` 记录的 SHA-256，因此交付包换机器时请连同清单一起带走。
 
 ## 三、截图怎么讲
 
@@ -84,9 +96,12 @@ python scripts/capture_demo_figures.py --out output/week5
 
 # 同时截移动端页面（需要先起 npm run dev）
 python scripts/capture_demo_figures.py --out output/week5 --base-url http://127.0.0.1:5174
+
+# 用崔提供的原生裁图替换（同名文件优先）
+python scripts/capture_demo_figures.py --out output/week5 --native-dir output/native
 ```
 
-- 脚本会核对：源预览存在、案例在公开子集内、放大后不超 2048 像素、单张不超过 8 MiB；有问题时打印清单并以退出码 1 结束。
+- 脚本会核对：源预览存在、源图 SHA-256 与 `examples/recognition.samples.json` 一致、案例在公开子集内、放大后不超 2048 像素、单张不超过 8 MiB；有问题时打印清单并以退出码 1 结束，且不生成对应输入。
 - `figures-manifest.json` 记录每张输入的源文件、SHA-256、尺寸与体积，以及每张图（含截图）的尺寸、体积、SHA-256 与截图地址；换图后可直接用它比对。
 - 截图用 `scripts/cdp_screenshot.py`，标准库直连 Chrome DevTools Protocol：本机没有 Playwright/Puppeteer，`--screenshot` 参数在长页面上会把固定底栏压在内容中间，所以改成先把视口拉到整页高度再截。
 
@@ -105,3 +120,4 @@ python scripts/capture_demo_figures.py --out output/week5 --base-url http://127.
 | 日期 | 变更 |
 | --- | --- |
 | 2026-11-21 | 首版：3 张演示输入、2 张数据图、6 张页面截图、来源核对表与讲法 |
+| 2026-11-21 | 出图前按公开样例清单校验源图 SHA-256；原生裁片替换改为保留原文件、重算尺度并刷新说明图与清单 |

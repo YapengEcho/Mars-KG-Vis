@@ -173,6 +173,21 @@ def capture(url: str, out: str, *, width: int, height: int, dpr: float, wait: fl
         )
         call("Page.navigate", {"url": url})
         time.sleep(wait)
+        health = call(
+            "Runtime.evaluate",
+            {
+                "expression": (
+                    "JSON.stringify({title: document.title,"
+                    " app: document.querySelector('#app') ? document.querySelector('#app').childElementCount : -1,"
+                    " text: (document.body ? document.body.innerText : '').slice(0, 120)})"
+                ),
+                "returnByValue": True,
+            },
+        )
+        state = json.loads(health["result"]["result"]["value"])
+        text = state.get("text", "")
+        if "无法访问此网站" in text or "ERR_CONNECTION" in text or state.get("app") == 0:
+            raise RuntimeError(f"页面没有渲染出来（{url}）：确认 dev server 在这个地址上，且首页能在浏览器打开")
         measured = call(
             "Runtime.evaluate",
             {
@@ -224,6 +239,9 @@ def main() -> int:
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 2
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
     print(f"截图完成：{info['file']}（{info['size'][0]}×{info['size'][1]}，{info['bytes']:,} 字节）")
     return 0
 
