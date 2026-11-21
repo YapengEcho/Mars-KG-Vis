@@ -35,6 +35,40 @@ CHROME_CANDIDATES = (
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 )
 
+# Text that only shows up when the browser or the server handed back an error page.
+ERROR_TEXT = (
+    "无法访问此网站",
+    "ERR_CONNECTION",
+    "ERR_NAME_NOT_RESOLVED",
+    "ERR_EMPTY_RESPONSE",
+    "404 Not Found",
+    "This site can",
+    "找不到此页面",
+)
+MIN_TEXT = 8
+
+
+def page_problem(state: dict, status: int | None, url: str) -> str | None:
+    """Return why the page is not a real render, or None when it looks fine.
+
+    A 404 page is the interesting case: the browser happily screenshots it, so the
+    HTTP status of the document has to be checked before the shot is accepted.
+    """
+    if status is not None and not 200 <= status < 300:
+        return f"页面返回 HTTP {status}（{url}）：地址可能写错，或 dev server 没有提供这个路由"
+    if state.get("ready") not in (None, "complete"):
+        return f"页面没加载完（readyState={state.get('ready')}，{url}）"
+    title = str(state.get("title") or "")
+    text = str(state.get("text") or "")
+    for marker in ERROR_TEXT:
+        if marker in text or marker in title:
+            return f"页面是错误页（{marker}，{url}）：确认 dev server 在这个地址上"
+    if state.get("app") in (None, 0, -1):
+        return f"页面没有渲染出来（{url}）：找不到 #app 或它没有内容"
+    if len(text.strip()) < MIN_TEXT:
+        return f"页面是空的（{url}）：#app 有节点但没文字，可能路由没匹配到"
+    return None
+
 
 class WebSocket:
     """Tiny RFC 6455 client: enough for request/response CDP traffic."""
@@ -104,6 +138,12 @@ class WebSocket:
             if opcode in (0x1, 0x0):
                 return json.loads(payload.decode())
 
+    def close(self) -> None:
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
 
 def _mask(data: bytes, mask: bytes) -> bytes:
     return bytes(byte ^ mask[index % 4] for index, byte in enumerate(data))
@@ -155,6 +195,14 @@ def capture(url: str, out: str, *, width: int, height: int, dpr: float, wait: fl
     try:
         ws = connect(port)
         counter = [0]
+        document_status: list[int | None] = [None]
+
+        def on_event(message: dict) -> None:
+            if message.get("method") != "Network.responseReceived":
+                return
+            params = message.get("params", {})
+            if params.get("type") == "Document":
+                document_status[0] = params.get("response", {}).get("status")
 
         def call(method: str, params: dict | None = None) -> dict:
             counter[0] += 1
@@ -165,29 +213,35 @@ def capture(url: str, out: str, *, width: int, height: int, dpr: float, wait: fl
                     if "error" in message:
                         raise RuntimeError(f"{method}: {message['error']}")
                     return message
+                on_event(message)
 
         call("Page.enable")
+        call("Network.enable")
         call(
             "Emulation.setDeviceMetricsOverride",
             {"width": width, "height": height, "deviceScaleFactor": dpr, "mobile": True},
         )
-        call("Page.navigate", {"url": url})
+        navigated = call("Page.navigate", {"url": url})
+        error_text = navigated.get("result", {}).get("errorText")
+        if error_text:
+            raise RuntimeError(f"页面打不开（{url}）：{error_text}")
         time.sleep(wait)
         health = call(
             "Runtime.evaluate",
             {
                 "expression": (
                     "JSON.stringify({title: document.title,"
+                    " ready: document.readyState,"
                     " app: document.querySelector('#app') ? document.querySelector('#app').childElementCount : -1,"
-                    " text: (document.body ? document.body.innerText : '').slice(0, 120)})"
+                    " text: (document.body ? document.body.innerText : '').slice(0, 200)})"
                 ),
                 "returnByValue": True,
             },
         )
         state = json.loads(health["result"]["result"]["value"])
-        text = state.get("text", "")
-        if "无法访问此网站" in text or "ERR_CONNECTION" in text or state.get("app") == 0:
-            raise RuntimeError(f"页面没有渲染出来（{url}）：确认 dev server 在这个地址上，且首页能在浏览器打开")
+        problem = page_problem(state, document_status[0], url)
+        if problem:
+            raise RuntimeError(problem)
         measured = call(
             "Runtime.evaluate",
             {
@@ -208,6 +262,10 @@ def capture(url: str, out: str, *, width: int, height: int, dpr: float, wait: fl
             fp.write(data)
         return {"url": url, "file": out, "size": [width, full_height], "bytes": len(data)}
     finally:
+        try:
+            ws.close()
+        except (NameError, OSError):
+            pass
         proc.terminate()
         try:
             proc.wait(timeout=10)

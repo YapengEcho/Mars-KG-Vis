@@ -102,6 +102,7 @@ python scripts/capture_demo_figures.py --out output/week5 --native-dir output/na
 ```
 
 - 脚本会核对：源预览存在、源图 SHA-256 与 `examples/recognition.samples.json` 一致、案例在公开子集内、放大后不超 2048 像素、单张不超过 8 MiB；有问题时打印清单并以退出码 1 结束，且不生成对应输入。
+- 截图前还会确认页面真的是渲染出来的页面，否则浏览器会把 404 或错误页当作正常页面存下来：文档响应必须是 2xx（看 `Network.responseReceived` 里 `type=Document` 的状态码）、`readyState` 为 `complete`、`#app` 存在且有子节点、正文不是空的、正文和标题里没有「404 Not Found / 无法访问此网站 / ERR_…」这类字样。任一不满足就记为「截图失败（…）」、删掉半成品图片，并以退出码 1 结束。
 - `figures-manifest.json` 记录每张输入的源文件、SHA-256、尺寸与体积，以及每张图（含截图）的尺寸、体积、SHA-256 与截图地址；换图后可直接用它比对。
 - 截图用 `scripts/cdp_screenshot.py`，标准库直连 Chrome DevTools Protocol：本机没有 Playwright/Puppeteer，`--screenshot` 参数在长页面上会把固定底栏压在内容中间，所以改成先把视口拉到整页高度再截。
 
@@ -122,3 +123,4 @@ python scripts/capture_demo_figures.py --out output/week5 --native-dir output/na
 | 2026-11-21 | 首版：3 张演示输入、2 张数据图、6 张页面截图、来源核对表与讲法 |
 | 2026-11-21 | 出图前按公开样例清单校验源图 SHA-256；原生裁片替换改为保留原文件、重算尺度并刷新说明图与清单 |
 | 2026-11-21 | 第二次及之后的重跑按上一次清单的 `sourceMode` 保留原生裁片，不再被放大图覆盖；补连续重跑两次的用例 |
+| 2026-11-21 | 截图前校验文档 HTTP 状态、`readyState`、`#app` 内容与 404 特征，避免把 404 页当作成功截图；补 404 用例 |
