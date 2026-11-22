@@ -67,6 +67,21 @@ export interface ChatResponse {
   toolCalls: ToolCallRecord[]
   traceId?: string
   version?: string
+  /** Present only when the request selected a recognition task. */
+  recognitionTask?: RecognitionTaskRef | null
+}
+
+/** Minimal task identity the chat page needs to route 「打开原记录」. */
+export interface RecognitionTaskRef {
+  kind: 'classify' | 'detect'
+  status: string
+}
+
+/** Selected recognition task forwarded with a chat request. */
+export interface ChatTaskContext {
+  recognitionTaskId: string
+  /** Device bearer header; the backend rejects the task without it. */
+  headers: Record<string, string>
 }
 
 export interface ExternalChatContext {
@@ -92,9 +107,15 @@ export async function fetchExternalChatContext(
     return null
   }
 }
+/** Task id only travels when a task is selected, so plain chat stays task-free. */
+function chatTaskBody(task?: ChatTaskContext): { recognitionTaskId?: string } {
+  return task ? { recognitionTaskId: task.recognitionTaskId } : {}
+}
+
 export async function sendChatMessage(
   messages: ChatMessage[],
   sessionId?: string,
+  task?: ChatTaskContext,
 ): Promise<ChatResponse> {
   if (!apiBase) {
     return {
@@ -108,8 +129,8 @@ export async function sendChatMessage(
   }
   const r = await fetch(`${apiBase}/api/agent/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: sessionId ?? null, messages }),
+    headers: { 'Content-Type': 'application/json', ...(task?.headers ?? {}) },
+    body: JSON.stringify({ sessionId: sessionId ?? null, messages, ...chatTaskBody(task) }),
     signal: AbortSignal.timeout(90000),
   })
   if (!r.ok) throw new Error('助手服务暂时不可用，请稍后重试')
@@ -139,6 +160,7 @@ export async function streamChatMessage(
   messages: ChatMessage[],
   handlers: ChatStreamHandlers,
   sessionId?: string,
+  task?: ChatTaskContext,
 ): Promise<void> {
   if (!apiBase) {
     handlers.onDone?.({
@@ -153,11 +175,18 @@ export async function streamChatMessage(
   }
   const r = await fetch(`${apiBase}/api/agent/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: sessionId ?? null, messages }),
+    headers: { 'Content-Type': 'application/json', ...(task?.headers ?? {}) },
+    body: JSON.stringify({ sessionId: sessionId ?? null, messages, ...chatTaskBody(task) }),
     signal: AbortSignal.timeout(90000),
   })
-  if (!r.ok || !r.body) throw new Error('助手服务暂时不可用，请稍后重试')
+  if (!r.ok || !r.body) {
+    // 选中任务时，401/404 会在 SSE 开始前以普通 JSON 返回，按错误码说明原因。
+    const body = await r.json().catch(() => null)
+    const code = body?.detail?.code
+    if (code === 'AUTH_REQUIRED') throw new Error('识别凭据已失效，请重新打开识别记录后再问。')
+    if (code === 'TASK_NOT_FOUND') throw new Error('这条记录不存在，或不属于当前设备。')
+    throw new Error('助手服务暂时不可用，请稍后重试')
+  }
   for await (const data of chatEventData(r.body)) {
     const event = JSON.parse(data) as ChatStreamEvent
     if (event.type === 'delta' && event.content) handlers.onDelta?.(event.content)

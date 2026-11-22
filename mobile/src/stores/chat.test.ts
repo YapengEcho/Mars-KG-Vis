@@ -2,9 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatResponse } from '../services/api'
 
 const streamChatMessage = vi.fn()
+const recognitionAuthHeaders = vi.fn()
 
 vi.mock('../services/api', () => ({
   streamChatMessage: (...args: unknown[]) => streamChatMessage(...args),
+}))
+
+vi.mock('../services/recognition', () => ({
+  recognitionAuthHeaders: () => recognitionAuthHeaders(),
 }))
 
 // Imported after the mock so the store picks up the stubbed transport.
@@ -99,5 +104,56 @@ describe('chat store streaming history', () => {
     expect(chat.state.error).toBe('网络中断')
     expect(chat.state.thread.at(-1)).toMatchObject({ content: '部分内容', pending: true })
     expect(chat.state.busy).toBe(false)
+  })
+})
+
+describe('chat store selected recognition task', () => {
+  const taskId = 'a'.repeat(32)
+
+  beforeEach(() => {
+    chat.reset()
+    streamChatMessage.mockReset()
+    recognitionAuthHeaders.mockReset()
+  })
+
+  it('forwards the task id and device credential with the request', async () => {
+    recognitionAuthHeaders.mockResolvedValueOnce({ Authorization: 'Bearer device-token' })
+    streamChatMessage.mockImplementationOnce(async (_messages, handlers: Handlers) => {
+      handlers.onDone?.(reply('本次检测找到 1 个候选框，待复核。'))
+    })
+
+    await chat.send('解释这条记录', taskId)
+
+    const [, , , task] = streamChatMessage.mock.calls[0]
+    expect(task).toEqual({
+      recognitionTaskId: taskId,
+      headers: { Authorization: 'Bearer device-token' },
+    })
+  })
+
+  it('refuses to send when the device has no credential', async () => {
+    recognitionAuthHeaders.mockResolvedValueOnce(null)
+
+    const sent = await chat.send('解释这条记录', taskId)
+
+    expect(sent).toBe(false)
+    expect(streamChatMessage).not.toHaveBeenCalled()
+    expect(chat.state.error).toContain('识别记录')
+    // 没有发出去的问题不能留在对话里。
+    expect(chat.state.thread.some((entry) => entry.role === 'user')).toBe(false)
+  })
+
+  it('records the task kind so 打开原记录 can pick detection mode', async () => {
+    recognitionAuthHeaders.mockResolvedValueOnce({ Authorization: 'Bearer device-token' })
+    streamChatMessage.mockImplementationOnce(async (_messages, handlers: Handlers) => {
+      handlers.onDone?.({
+        ...reply('本次检测运行完成，未检出。'),
+        recognitionTask: { kind: 'detect', status: 'completed' },
+      })
+    })
+
+    await chat.send('解释这条记录', taskId)
+
+    expect(chat.state.thread.at(-1)?.taskKind).toBe('detect')
   })
 })

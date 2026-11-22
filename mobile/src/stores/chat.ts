@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { buildChatHistory } from '../lib/chatHistory'
+import { recognitionAuthHeaders } from '../services/recognition'
 import { streamChatMessage } from '../services/api'
 import type { AgentAction, ChatResponse, ChatStreamHandlers } from '../services/api'
 import { prepareExternalModel, streamExternalChat } from '../services/externalChat'
@@ -15,6 +16,8 @@ export interface ChatEntry {
   citations?: ChatResponse['citations']
   actions?: AgentAction[]
   status?: ChatResponse['status']
+  /** Task kind of the explained record, so 「打开原记录」 can pick the right mode. */
+  taskKind?: 'classify' | 'detect'
   /**
    * Assistant replies stay pending until a terminal `done`/`error` frame
    * arrives. Pending content is shown to the user but excluded from the history
@@ -43,6 +46,24 @@ function reset() {
   state.error = ''
 }
 
+/**
+ * Credential for a chat request that explains a selected recognition task.
+ *
+ * The device bearer header is required by the backend; without an existing
+ * session we refuse to send rather than silently create a new device identity.
+ */
+async function taskContext(
+  taskId: string,
+): Promise<{ recognitionTaskId: string; headers: Record<string, string> } | null> {
+  let headers: Record<string, string> | null = null
+  try {
+    headers = await recognitionAuthHeaders()
+  } catch {
+    headers = null
+  }
+  return headers ? { recognitionTaskId: taskId, headers } : null
+}
+
 export const chat = {
   state,
   reset,
@@ -62,10 +83,24 @@ export const chat = {
       : null
     reset()
   },
-  async send(text: string): Promise<boolean> {
+  async send(text: string, taskId?: string): Promise<boolean> {
     const question = text.trim()
     if (!question || state.busy) return false
     state.error = ''
+    // 选中识别任务时必须走内置助手：外部模型读不到服务端的任务与凭据。
+    if (taskId && externalModel) {
+      state.error = '解释识别记录需要使用内置助手，请先关闭自定义模型。'
+      return false
+    }
+    let task: { recognitionTaskId: string; headers: Record<string, string> } | undefined
+    if (taskId) {
+      const context = await taskContext(taskId)
+      if (!context) {
+        state.error = '请在本设备的识别记录中打开任务，再让助手解释。'
+        return false
+      }
+      task = context
+    }
     state.thread.push({ role: 'user', content: question })
     state.busy = true
     // The assistant bubble is created lazily on the first streamed chunk and
@@ -95,11 +130,12 @@ export const chat = {
           entry.citations = response.citations
           entry.actions = response.actions
           entry.status = response.status
+          entry.taskKind = response.recognitionTask?.kind
           entry.pending = false
         },
       }
       if (externalModel) await streamExternalChat(externalModel, messages, handlers)
-      else await streamChatMessage(messages, handlers)
+      else await streamChatMessage(messages, handlers, undefined, task)
       if (!finished) state.error = '回复未完成，请重试'
     } catch (e) {
       state.error = e instanceof Error ? e.message : '发送失败，请稍后重试'
