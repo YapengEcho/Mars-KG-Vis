@@ -1554,9 +1554,13 @@
                 "$ref": "#/components/schemas/TaskSummary"
               },
               {
+                "$ref": "#/components/schemas/DetectTaskSummary"
+              },
+              {
                 "type": "null"
               }
             ],
+            "title": "Recognitiontask",
             "description": "Authorized task summary, read from storage; null for ordinary chat or lookup failure."
           }
         },
@@ -1705,6 +1709,139 @@
           "latitude"
         ],
         "title": "CoordinateSystem"
+      },
+      "DetectTaskSummary": {
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 32,
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Taskid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "detect"
+            ],
+            "const": "detect",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "modelVersion": {
+            "type": "string",
+            "title": "Modelversion"
+          },
+          "preprocessingVersion": {
+            "type": "string",
+            "title": "Preprocessingversion"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DetectionTaskResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "taskId",
+          "kind",
+          "status",
+          "createdAt",
+          "finishedAt",
+          "modelVersion",
+          "preprocessingVersion",
+          "errorCode",
+          "result"
+        ],
+        "title": "DetectTaskSummary",
+        "description": "Allowlist for detection tasks: no image, no input geometry, no model digests."
+      },
+      "DetectionCandidate": {
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "title": "Candidateid"
+          },
+          "box": {
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Box"
+          },
+          "detectionScore": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Detectionscore"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/ResultSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidateId",
+          "box",
+          "detectionScore",
+          "classification"
+        ],
+        "title": "DetectionCandidate",
+        "description": "One candidate box plus its four-class classification."
       },
       "DetectionCapability": {
         "properties": {
@@ -1921,6 +2058,45 @@
         ],
         "title": "DetectionTask"
       },
+      "DetectionTaskResult": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "detections",
+              "no_detections"
+            ],
+            "title": "Outcome"
+          },
+          "coordinateSpace": {
+            "type": "string",
+            "enum": [
+              "image_pixels"
+            ],
+            "const": "image_pixels",
+            "title": "Coordinatespace"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "coordinateSpace",
+          "truncated",
+          "candidates"
+        ],
+        "title": "DetectionTaskResult"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2064,6 +2240,14 @@
             "additionalProperties": {
               "type": "number"
             },
+            "propertyNames": {
+              "enum": [
+                "SL",
+                "SP",
+                "FL",
+                "CL"
+              ]
+            },
             "type": "object",
             "title": "Probabilities"
           },
@@ -2135,6 +2319,14 @@
               "type": "number",
               "maximum": 1.0,
               "minimum": 0.0
+            },
+            "propertyNames": {
+              "enum": [
+                "SL",
+                "SP",
+                "FL",
+                "CL"
+              ]
             },
             "type": "object",
             "title": "Probabilities"
@@ -2464,6 +2656,14 @@
             "additionalProperties": {
               "type": "integer"
             },
+            "propertyNames": {
+              "enum": [
+                "SL",
+                "SP",
+                "FL",
+                "CL"
+              ]
+            },
             "type": "object",
             "title": "Bytype"
           },
@@ -2735,6 +2935,7 @@
             "title": "Name"
           },
           "args": {
+            "additionalProperties": true,
             "type": "object",
             "title": "Args"
           },
