@@ -438,17 +438,17 @@ def test_detection_result_rejects_inconsistent_outcome():
     """有候选却标未检出（或反之）属于坏数据，不能当成正常结果返回。"""
     from pydantic import ValidationError
 
-    from api.recognition_access import DetectionResult
+    from api.recognition_access import DetectionTaskResult
 
     with pytest.raises(ValidationError):
-        DetectionResult.model_validate({
+        DetectionTaskResult.model_validate({
             'outcome': 'no_detections',
             'coordinateSpace': 'image_pixels',
             'truncated': False,
             'candidates': [detection_candidate()],
         })
     with pytest.raises(ValidationError):
-        DetectionResult.model_validate({
+        DetectionTaskResult.model_validate({
             'outcome': 'detections',
             'coordinateSpace': 'image_pixels',
             'truncated': False,

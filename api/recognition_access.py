@@ -94,7 +94,7 @@ class DetectionCandidate(BaseModel):
     classification: ResultSummary
 
 
-class DetectionResult(BaseModel):
+class DetectionTaskResult(BaseModel):
     model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
     outcome: Literal['detections', 'no_detections']
     coordinateSpace: Literal['image_pixels']
@@ -155,7 +155,7 @@ class DetectTaskSummary(BaseModel):
     modelVersion: str
     preprocessingVersion: str
     errorCode: str | None
-    result: DetectionResult | None
+    result: DetectionTaskResult | None
 
     @model_validator(mode='after')
     def consistent_result(self):

@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import sqlite3
 import time
 from types import SimpleNamespace
@@ -125,13 +126,43 @@ def test_detection_works_without_single_image_screening(tmp_path):
             'messages': [{'role': 'user', 'content': '请查看这条识别记录'}],
         }
         for endpoint in ('/api/agent/chat', '/api/agent/chat/stream'):
+            # 跨设备仍然 404，且不透露归属。
             response = client.post(endpoint, headers=stranger, json=body)
             assert response.status_code == 404
             assert response.json()['detail']['code'] == 'TASK_NOT_FOUND'
-            response = client.post(endpoint, headers=owner, json=body)
-            assert response.status_code == 422 and response.headers['cache-control'] == 'no-store'
-            assert response.json()['detail']['code'] == 'UNSUPPORTED_TASK_KIND'
-        assert wait_for_task(client, detection.headers['location'], owner)['status'] == 'completed'
+            # 本设备：检测任务摘要可读，同步与流式都返回 200。
+            data = agent_response(client.post(endpoint, headers=owner, json=body), endpoint)
+            summary = data['recognitionTask']
+            assert summary['kind'] == 'detect'
+            assert summary['taskId'] == detection.json()['taskId']
+            assert summary['status'] in ('queued', 'running', 'completed')
+            assert data['actions'] == [dict(type='open_task', taskId=summary['taskId'], slideId=None)]
+            serialized = json.dumps(data)
+            assert 'modelDigest' not in serialized and 'imageUrl' not in serialized
+        completed = wait_for_task(client, detection.headers['location'], owner)
+        assert completed['status'] == 'completed'
+
+        # 完成后再读一次：摘要带候选，回答保持「待复核」，不把候选说成确认类型。
+        data = agent_response(client.post('/api/agent/chat', headers=owner, json=body),
+                              '/api/agent/chat')
+        summary = data['recognitionTask']
+        assert summary['result']['outcome'] == 'detections'
+        assert len(summary['result']['candidates']) == len(completed['result']['candidates'])
+        assert '待复核' in data['answer']
+        for claim in ('已确认', '确定是'):
+            assert claim not in data['answer']
+
+
+def agent_response(response, endpoint):
+    """Return the final ChatResponse payload for either the sync or stream endpoint."""
+    assert response.status_code == 200, response.text
+    assert response.headers['cache-control'] == 'no-store'
+    if endpoint.endswith('/stream'):
+        frames = [json.loads(line[6:]) for line in response.text.splitlines()
+                  if line.startswith('data: ')]
+        assert frames and frames[-1]['type'] in ('done', 'error')
+        return frames[-1]['response']
+    return response.json()
 
 
 @pytest.mark.parametrize('raise_error', [False, True])

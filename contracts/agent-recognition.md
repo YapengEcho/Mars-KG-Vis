@@ -98,15 +98,36 @@ Content-Type: application/json
 
 | 字段 | 内容 |
 | --- | --- |
-| `taskId`、`kind`、`status` | 任务标识、classify及queued/running/completed/failed |
+| `taskId`、`kind`、`status` | 任务标识；`kind` 为 `classify` 或 `detect`；`status` 为 queued/running/completed/failed |
 | `createdAt`、`finishedAt` | 原任务时间；结束时间可为空 |
-| `modelVersion`、`preprocessingVersion` | 该次任务的版本，不替换成当前加载版本 |
+| `modelVersion`、`preprocessingVersion` | 该次任务的版本，不替换成当前加载版本。检测任务的顶层版本是检测器版本 |
 | `errorCode` | 任务失败原因，可为空 |
-| `result` | 完成时的类型、四类分数、confidence、uncertain、复核原因/策略、校准状态及版本；其他状态为空 |
+| `result` | 完成时的结果；其他状态为空。见下表 |
+
+`result` 按 `kind` 分两种结构：
+
+| `kind` | `result` 内容 |
+| --- | --- |
+| `classify` | 类型、四类分数、confidence、uncertain、复核原因/策略、校准状态及版本 |
+| `detect` | `outcome`（`detections` / `no_detections`）、`coordinateSpace`（固定 `image_pixels`）、`truncated`、`candidates[]`；每个候选含 `candidateId`、`box`、`detectionScore` 与 `classification`（结构同 `classify` 的结果） |
+
+检测任务的候选数受上限约束，`truncated=true` 表示只返回了部分候选。候选的 `classification.modelVersion` 是分类器版本，与任务顶层的检测器版本可以不同。
 
 不返回图片、上传输入元数据、模型资源哈希、访问凭据或服务端路径。四类分数按存储原值返回，不能当正确率。页面以`recognitionTask`为原始结果来源，不从`answer`解析分数。
 
 查询成功时附带已有的`open_task`动作；打开原记录继续调用原有带授权的任务接口。`ChatResponse.status=ok`表示读取成功，不表示识别一定完成：必须查看`recognitionTask.status`。当前完成任务的答复明确提示自动解释尚未接入。
+
+### 检测任务（kind=detect）的答复口径
+
+助手按三种情况分别作答，不使用「已确认」「确定是」等断言措辞：
+
+| 情况 | 依据 | 答复要点 |
+| --- | --- | --- |
+| 有候选 | `outcome=detections` | 列出候选数；逐个给出类型（含中文名）、四类分数、检测分，并标「待复核」；`truncated` 时说明只列出部分 |
+| 未检出 | `outcome=no_detections` | 明确「没有找到候选框」，并说明未检出不等于图上一定没有滑坡 |
+| 失败 | `status=failed` | 给出 `errorCode`，说明没有候选结果；不补写类型 |
+
+排队与运行中只返回状态，不给类型。手机端传递检测任务编号与设备凭据、以及「打开原记录」跳转到检测模式仍待联调；后端读取该摘要的路径已可用。
 
 流式入口返回`status`及`done/error`事件，终态事件的`response`与同步结构一致。本轮任务查询不生成`delta`文字流。两个端点及错误响应均使用`Cache-Control: no-store`。
 
