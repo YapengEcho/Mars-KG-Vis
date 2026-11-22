@@ -71,6 +71,8 @@ python scripts/export_catalog.py --input PATH_TO_CATALOG --output mobile/public/
 |---|---|
 | `GET /api/health` | 服务及目录状态 |
 | `GET /api/catalog` | 完整目录 |
+| `GET /api/catalog?chart=types&version=...` | 类型占比 PNG，可用 `type` 高亮类别 |
+| `GET /api/catalog?chart=latitude&version=...` | 纬度分布 PNG，可用 `type` 统计单类 |
 | `GET /api/landslides?q=&type=&page=1&pageSize=20` | `items`、`total`、`page`、`pageSize`、`dataMode`、`version` |
 | `GET /api/landslides/{id}` | 单条记录；不存在返回404 |
 | `GET /api/stats?q=&type=` | 同条件总数与 `byType` |
@@ -78,6 +80,8 @@ python scripts/export_catalog.py --input PATH_TO_CATALOG --output mobile/public/
 | `POST /api/landslide/classify` | 配置后返回202识别任务；未配置时503，见[识别约定](recognition.md) |
 
 后续单图分类使用multipart字段 `file`；成功结果约定包含 `prediction`、`probabilities`、`confidence`、`uncertain` 和 `modelVersion`。检测服务另接任务接口，不把单图分类当作大图检测。
+
+统计图的 `version` 可选。传入版本与 API 当前目录不一致时返回 409，前端可用已经载入的目录继续绘图。图表类型和类别参数按接口枚举校验。
 
 ## 范围查询与 Agent 一致性（第2周）
 

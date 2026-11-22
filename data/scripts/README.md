@@ -28,6 +28,8 @@ python data/scripts/train_yolo.py --help
 
 基础数据工具依赖 NumPy、Pillow、pyshp、tifffile、SciPy、PyYAML。模型研究另需 PyTorch、Torchvision、Ultralytics、scikit-learn、joblib、timm、Transformers、psutil；CUDA 安装应匹配实际硬件。CPU 测试所需的轻量依赖见 `requirements-test.txt`。
 
+`make_yolo_dataset.py` 默认按整图幅组划分训练、验证和测试。同一图幅的全部裁片进入同一集合。有实际覆盖重叠或同一滑坡跨幅的图幅也会并组。比例按有滑坡的图幅组近似分配，实际图幅名单见 `quality_report.json`。需要固定评估范围时使用 `--split-plan`，程序会校验图幅范围与跨幅滑坡。独立图幅组不足时可补充图幅，或用 `--val-ratio 0 --test-ratio 0` 只导出训练数据。
+
 日期结尾的脚本是历史受控实验入口，包含固定目录、协议哈希和 Windows 后台启动方式。运行前必须提供协议引用的私有数据、权重、模型实现及运行环境；这些文件缺失时不能完整复现实验。历史训练还依赖当时使用的 Ultralytics 实现，通用训练入口中的部分参数并非任意官方版本都支持。仅安装最新版依赖不能保证数值一致。
 
 本次提交按所选入口的本地 Python 依赖及显式脚本引用整理，包含必要的历史依赖；没有迁入全部个人研究目录。原有 SHP、人工记录、专家类型与空间划分均不在公开仓库中。

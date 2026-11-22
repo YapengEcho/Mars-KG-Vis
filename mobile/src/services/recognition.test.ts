@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./api', () => ({ apiBase: 'http://127.0.0.1:8001' }))
 import {
   submitRecognition,
+  submitDetection,
   recognitionHistory,
   recognitionImage,
   getRecognition,
@@ -9,6 +10,7 @@ import {
   resetRecognitionSession,
   taskLabel,
   type RecognitionTask,
+  type DetectionTask,
 } from './recognition'
 const memory = new Map<string, string>()
 const storage = {
@@ -34,6 +36,7 @@ beforeEach(() => {
 describe('two-stage recognition outcomes', () => {
   const completed: RecognitionTask = {
     taskId: 'task-1',
+    kind: 'classify',
     status: 'completed',
     createdAt: '2026-01-01T00:00:00Z',
     finishedAt: '2026-01-01T00:00:01Z',
@@ -76,6 +79,73 @@ describe('two-stage recognition outcomes', () => {
         },
       }),
     ).toBe('旧记录 · 未初筛')
+  })
+})
+describe('detection tasks', () => {
+  const pending: DetectionTask = {
+    taskId: 'task-detect',
+    kind: 'detect',
+    status: 'queued',
+    createdAt: '2026-01-01T00:00:00Z',
+    finishedAt: null,
+    modelVersion: 'detector-v1',
+    preprocessingVersion: 'detect-v1',
+    input: { width: 1800, height: 1500, preprocessingVersion: 'detect-v1' },
+    result: null,
+    errorCode: null,
+    imageUrl: '/api/recognition/tasks/task-detect/image',
+  }
+  const candidate = {
+    candidateId: 'c1',
+    box: [10, 20, 110, 120] as [number, number, number, number],
+    detectionScore: 0.4,
+    classification: {
+      prediction: 'CL' as const,
+      probabilities: { SL: 0.1, SP: 0.2, FL: 0.3, CL: 0.4 },
+      confidence: 0.4,
+      uncertain: true,
+      reviewReasons: [],
+      scoresCalibrated: false,
+      modelVersion: 'type-model',
+      preprocessingVersion: 'v1',
+    },
+  }
+  it('uploads to the detection endpoint and lists detect history', async () => {
+    fetcher
+      .mockResolvedValueOnce(response(credential, 201))
+      .mockResolvedValueOnce(response({ taskId: 'task-detect', kind: 'detect' }, 202))
+    expect((await submitDetection(new File(['x'], 'ctx.png'))).taskId).toBe('task-detect')
+    expect(fetcher.mock.calls[1][0]).toContain('/api/landslide/detect')
+    fetcher.mockResolvedValueOnce(response({ items: [], total: 0 }))
+    await recognitionHistory(1, 'detect')
+    expect(fetcher.mock.calls[2][0]).toContain('kind=detect')
+  })
+  it('labels pending, empty, and candidate outcomes', () => {
+    expect(taskLabel({ ...pending, status: 'running' })).toBe('正在检测')
+    expect(
+      taskLabel({
+        ...pending,
+        status: 'completed',
+        result: {
+          outcome: 'no_detections',
+          coordinateSpace: 'image_pixels',
+          truncated: false,
+          candidates: [],
+        },
+      }),
+    ).toBe('未检出候选 · 待复核')
+    expect(
+      taskLabel({
+        ...pending,
+        status: 'completed',
+        result: {
+          outcome: 'detections',
+          coordinateSpace: 'image_pixels',
+          truncated: false,
+          candidates: [candidate, { ...candidate, candidateId: 'c2' }],
+        },
+      }),
+    ).toBe('检出 2 个候选 · 待复核')
   })
 })
 describe('device-scoped recognition', () => {

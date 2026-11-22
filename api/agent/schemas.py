@@ -39,3 +39,18 @@ class ChatResponse(AgentModel):
     version: str | None = None
     recognitionTask: TaskSummary | DetectTaskSummary | None = Field(default=None,
         description='Authorized task summary, read from storage; null for ordinary chat or lookup failure.')
+
+
+class ExternalContextRequest(AgentModel):
+    question: str = Field(min_length=1, max_length=4000)
+
+
+class PublicGuidebookExcerpt(AgentModel):
+    title: str
+    text: str
+
+
+class ExternalChatContext(AgentModel):
+    reply: ChatResponse | None = None
+    excerpts: list[PublicGuidebookExcerpt] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)

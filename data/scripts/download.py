@@ -1,16 +1,4 @@
 # -*- coding: utf-8 -*-
-"""从成理工 GeoMars 系统公开前端资源下载并提取火星滑坡编目数据。
-
-数据来源：https://cdut-mars.top/
-成都理工大学地质灾害防治与地质环境保护全国重点实验室
-「GeoMars 火星滑坡展示系统」。
-
-从首页查找火星地图脚本，再读取地图引用的 project-catalog-*.js。
-旧版把编目直接打包在地图脚本中。两种格式均可导出 JSON 和 CSV。
-默认将网站原始数据写入 data/raw/geomars_download，供后续清洗与入库。
-
-仅用于《Python 程序设计》课程项目；数据版权属于原作者，报告需注明来源。
-"""
 
 import argparse
 import csv
@@ -21,11 +9,9 @@ from collections import Counter
 from pathlib import Path
 
 BASE_URL = "https://cdut-mars.top"
-BASE_DIR = Path(__file__).resolve().parents[2]  # data/scripts -> data -> 项目根
+BASE_DIR = Path(__file__).resolve().parents[2]
 RAW_DIR = BASE_DIR / "data" / "raw"
 
-# 类型代码 -> (英文全称, 中文)。对应论文《火星全球滑坡编目及分类初探》四分类。
-# 保留编目的原始代码，并附上论文使用的中英文类别名称。
 TYPE_MAP = {
     "SL": ("Sliding", "滑移型"),
     "SP": ("Slumping", "滑塌型"),
@@ -33,21 +19,21 @@ TYPE_MAP = {
     "CL": ("Composite", "复合型"),
 }
 
-# 数字（兼容 .7837 这种省略前导 0 的写法，如面积/周长）
+# 网页里的面积和周长有时写成 .7837，经纬度也可能带负号。
 _NUM = r'-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?'
 
-# 匹配数组里的一条对象；字段顺序与前端打包格式完全一致。
+# 正则匹配
 OBJ_RE = re.compile(
     r'\{id:(\d+(?:[eE][+-]?\d+)?),name:"([^"]*)",type:"([A-Za-z]+)",'
     r'area:(' + _NUM + r'),Perimeter:(' + _NUM + r'),'
     r'lon_degree:"([^"]*)",lat_degree:"([^"]*)",'
     r'lon:(' + _NUM + r'),lat:(' + _NUM + r'),'
-    r'desc:"([^"]*)"\}'
+    r'desc:"([^"]*)"}'
 )
 
 
 def http_get(url: str, *, label: str | None = None) -> str:
-    """用标准库请求一个文本资源（零第三方依赖）。"""
+    """用标准库的 urllib 请求网页，把响应按 UTF-8 解码成文本。"""
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (course project)"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         body = resp.read()
@@ -61,13 +47,13 @@ def _fetch_resource(path: str, label: str, verbose: bool) -> str:
 
 
 def fetch_viewer_js(*, verbose: bool = False) -> str:
-    """从 GeoMars 首页定位并读取火星地图脚本。"""
+    """从首页找到主脚本，再顺着动态导入找到地图模块。"""
     html = _fetch_resource("/", "GeoMars 首页", verbose)
-    main = re.search(r"/assets/index-[A-Za-z0-9_-]+\.js", html)
-    if not main:
+    main_script = re.search(r"/assets/index-[A-Za-z0-9_-]+\.js", html)
+    if not main_script:
         raise RuntimeError("未在首页找到主 JS bundle")
 
-    main_js = _fetch_resource(main.group(), "主脚本", verbose)
+    main_js = _fetch_resource(main_script.group(), "主脚本", verbose)
     viewer = re.search(r"""import\(["']\./(MarsViewer-[A-Za-z0-9_-]+\.js)["']\)""", main_js)
     if not viewer:
         raise RuntimeError("未在主 bundle 找到 MarsViewer 动态 chunk")
@@ -76,15 +62,15 @@ def fetch_viewer_js(*, verbose: bool = False) -> str:
 
 
 def extract_records(js_text: str) -> list[dict]:
-    """从 JS 文本里逐条提取滑坡记录，并按项目约定补全字段与类型映射。"""
+    """从编目脚本提取记录，补上类型名称，把经纬度和面积等字段转成数值。"""
     records = []
     for g in OBJ_RE.finditer(js_text):
         raw_id, name, code, area, perimeter, lon_deg, lat_deg, lon, lat, desc = g.groups()
         type_en, type_cn = TYPE_MAP.get(code, (code, code))
-        ordinal = int(float(raw_id))  # id 可能写成 1e3 这类科学计数，先转 float
+        ordinal = int(float(raw_id))  # 原始编号有时会写成 1e3，先按数值读。
         records.append({
-            "id": f"ls_{ordinal:04d}",   # 项目约定的稳定主键
-            "source_id": ordinal,         # 前端原始数字 id，保留以便追溯
+            "id": f"ls_{ordinal:04d}",   # 项目里用 ls_0493 这样的编号。
+            "source_id": ordinal,       # 回查原站时仍然用原编号。
             "name": name,
             "type": code,
             "type_en": type_en,
@@ -101,6 +87,7 @@ def extract_records(js_text: str) -> list[dict]:
 
 
 def fetch_catalog_records(*, verbose: bool = False) -> list[dict]:
+    """读取地图引用的编目文件"""
     viewer_js = fetch_viewer_js(verbose=verbose)
     catalog = re.search(r"""["']\./(project-catalog-[A-Za-z0-9_-]+\.js)["']""", viewer_js)
     js_text = (
@@ -130,6 +117,7 @@ def main(argv: list[str] | None = None) -> None:
     total = len(records)
     stem = "mars_landslides"
     if args.source_id is not None:
+        # 上面先解析整份编目，到这一步再按原编号筛选导出行。
         records = [record for record in records if record["source_id"] == args.source_id]
         if len(records) != 1:
             parser.error(f"编号 {args.source_id} 应匹配一条记录，实际匹配 {len(records)} 条")

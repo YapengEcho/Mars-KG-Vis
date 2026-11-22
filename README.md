@@ -15,12 +15,13 @@
 - 已有边界几何按需从现有几何接口加载，可在地图上显示或隐藏；坐标系未确认或记录无几何时明确说明原因。
 - 按坐标定位：输入经纬度旋转火星，500 km 内有记录时同时选中该记录。
 - 点位定位与列表联动，自动翻到对应页并高亮指定记录。相距不足 1.5° 的密集点位可依次切换。
-- 按编号、名称和说明查询，支持类别筛选和翻页。统计页展示类型占比、纬度分布和面积汇总。
+- 按编号、名称和说明查询，支持类别筛选和翻页。统计页可显示后端用 Matplotlib 绘制的环形图与纬度柱形图，本地目录也支持统计和筛选。
 - 真实目录与示例数据在页面分开标识；`#/?focus=<记录id或原始编号>` 可直接定位点位。
 - SL、SP、FL、CL 四类目录与案例入口。
 - 本机收藏与回访，收藏按最近顺序排列；失效收藏可一键清理。
 - 单图识别先筛查滑坡或背景，再对通过筛查的裁片判断类型。历史记录支持回看和删除。
 - 上传前校验 PNG/JPEG 裁图（不超过 8 MB、总像素不超过 4096×4096、最长边不超过 8192），提交后显示等待秒数；失败按错误码说明原因。
+- CTX 裁图检测：上传整幅裁图（不超过 8 MB、最长边 2048 像素、总像素 2048×2048），等待候选框结果后可点选框放大查看逐框四类分数；检测记录与分类记录分开保留，凭同一设备凭据回看。
 - 8张公开真实裁片的浏览、缩放、下载和分类试用入口。
 
 本地默认展示 8 条已允许公开的真实滑坡及其影像，前端与 API 使用同一子集。球面按原始坐标绘制点位，坐标及几何校验状态见[编目接口](contracts/catalog.md)。当前线上识别页面接收裁好的单张影像。仓库的 CTX 裁图检测接口配置说明见 [API 文档](api/README.md)。
@@ -84,11 +85,13 @@ python scripts/import_catalog_sqlite.py --input examples/catalog.demo.json --out
 
 ```dotenv
 LLM_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
+LLM_MODEL=deepseek-flash
 DEEPSEEK_API_KEY=<你的服务端密钥>
 ```
 
 `MARS_DOCS_PATH` 可指向自备的图鉴或案例资料 JSON。未配置语言模型时，开放式问题返回 `llm_unavailable`，目录快捷查询仍可用。
+
+用户也可以在助手的模型设置中选择服务，填写模型 ID 和自己的 API Key。网页直接请求用户选择的 HTTPS 服务，密钥留在当前页面内存中。项目后端为编号查询和地图定位提供结构化结果，为开放式问题提供公开图鉴摘录。自定义服务需要允许当前网页来源跨域调用。
 
 ## Android
 
@@ -109,7 +112,7 @@ cd android
 
 Windows使用 `gradlew.bat assembleDebug`。输出位于 `app/build/outputs/apk/debug/`。
 
-也可在GitHub Actions中手动运行 `Android debug build`，完成后下载 `mars-atlas-debug` 安装包产物。
+也可在 GitHub Actions 中手动运行 `Android debug build`，完成后下载 `mars-atlas-debug` 安装包。CI 默认使用线上项目 API。部署到其他地址时，在仓库的 Actions 变量 `MARS_ANDROID_API_BASE_URL` 设置 HTTPS 服务地址，重新构建后应用。后端的 `MARS_CORS_ORIGINS` 需包含 Android WebView 来源 `https://localhost`，反向代理需将 `OPTIONS` 请求转给 API。
 
 ## 检查
 

@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { LoaderCircle, MapPin, ScanLine, Send, Sparkles } from '@lucide/vue'
 import AssistantMarkdown from '../components/AssistantMarkdown.vue'
+import ChatModelSettings from '../components/ChatModelSettings.vue'
 import SlideCard from '../components/SlideCard.vue'
 import { isChatWebLink } from '../lib/chatMarkdown'
 import { fetchCapabilities } from '../services/api'
@@ -15,6 +16,7 @@ const scrollEl = ref<HTMLElement>()
 const thread = computed(() => chat.state.thread)
 const busy = computed(() => chat.state.busy)
 const error = computed(() => chat.state.error)
+const modelStatus = computed(() => chat.state.model?.model ?? statusText())
 onMounted(async () => {
   await scrollToEnd()
   try {
@@ -53,22 +55,21 @@ function runAction(action: AgentAction) {
   }
 }
 function statusText() {
-  if (agentReady.value === true) return '助手已连接'
-  if (agentReady.value === false) return '助手语言模型未配置'
-  return '后端未连接'
+  if (agentReady.value === true) return '内置助手已连接'
+  if (agentReady.value === false) return '内置模型未配置'
+  return '内置助手未连接'
 }
 </script>
 <template>
   <section class="chat-shell">
     <div class="chat-top">
-      <div>
+      <div class="chat-title">
         <span class="eyebrow">MARS ASSISTANT</span>
         <h1>滑坡助手</h1>
+        <p class="chat-model-status" :title="modelStatus">{{ modelStatus }}</p>
       </div>
       <div class="chat-actions">
-        <div class="service-status" :class="{ ready: agentReady === true }">
-          <span></span>{{ statusText() }}
-        </div>
+        <ChatModelSettings />
         <button class="text-button" type="button" :disabled="busy" @click="resetThread">
           新建对话
         </button>
@@ -156,6 +157,7 @@ function statusText() {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 .chat-actions .text-button:disabled {
   color: var(--muted);
@@ -166,14 +168,16 @@ function statusText() {
   font-weight: 450;
   margin: 6px 0 0;
 }
-.chat-top .service-status {
-  margin: 0;
-  padding: 8px 12px;
-  font-size: 11px;
-  white-space: nowrap;
+.chat-title {
+  min-width: 0;
 }
-.chat-top .service-status.ready span {
-  background: #70c6ad;
+.chat-model-status {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .chat-thread {
   flex: 1;

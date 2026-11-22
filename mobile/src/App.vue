@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { Compass, Layers, ScanLine, Sparkles, User } from '@lucide/vue'
 import { atlas } from './stores/atlas'
+const route = useRoute()
 const tabs = [
   { to: '/', label: '探索', icon: Compass },
   { to: '/atlas', label: '图鉴', icon: Layers },
@@ -28,7 +30,16 @@ onMounted(() => atlas.load())
     </div>
     <main id="main-content"><RouterView /></main>
     <nav class="bottom-nav" aria-label="主导航">
-      <RouterLink v-for="tab in tabs" :key="tab.to" :to="tab.to" :exact-active-class="'is-active'"
+      <RouterLink
+        v-for="tab in tabs"
+        :key="tab.to"
+        :to="tab.to"
+        exact-active-class="is-active"
+        v-bind="
+          tab.to === '/atlas' && route.path.startsWith('/atlas/')
+            ? { class: 'is-active', 'aria-current': 'location' }
+            : {}
+        "
         ><component :is="tab.icon" :size="21" :stroke-width="1.6" /><span>{{ tab.label }}</span
         ><i></i
       ></RouterLink>

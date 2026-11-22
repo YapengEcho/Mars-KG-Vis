@@ -19,6 +19,7 @@ export interface RecognitionScreening {
 }
 export interface RecognitionTask {
   taskId: string
+  kind: 'classify'
   status: 'queued' | 'running' | 'completed' | 'failed'
   createdAt: string
   finishedAt: string | null
@@ -28,6 +29,33 @@ export interface RecognitionTask {
   screening?: RecognitionScreening | null
   errorCode: string | null
 }
+export interface DetectionCandidate {
+  candidateId: string
+  box: [number, number, number, number]
+  detectionScore: number
+  classification: RecognitionResult
+}
+export interface DetectionResult {
+  outcome: 'detections' | 'no_detections'
+  coordinateSpace: 'image_pixels'
+  truncated: boolean
+  candidates: DetectionCandidate[]
+}
+export interface DetectionTask {
+  taskId: string
+  kind: 'detect'
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  createdAt: string
+  finishedAt: string | null
+  modelVersion: string
+  preprocessingVersion: string
+  input: { width: number; height: number; preprocessingVersion: string }
+  result: DetectionResult | null
+  errorCode: string | null
+  imageUrl: string
+}
+export type HistoryTask = RecognitionTask | DetectionTask
+export type HistoryKind = 'classify' | 'detect'
 interface Session {
   token: string
   expiresAt: string
@@ -40,6 +68,7 @@ const messages: Record<string, string> = {
   TASK_NOT_FOUND: '这条记录不存在，或不属于当前会话。',
   TASK_BUSY: '图片仍在处理中，完成后才能删除。',
   MODEL_NOT_CONFIGURED: '识别模型尚未就绪，请稍后重试。',
+  DETECTION_NOT_CONFIGURED: '检测服务尚未就绪，请稍后重试。',
   SCREENING_NOT_CONFIGURED: '滑坡初筛服务尚未就绪，请稍后重试。',
   RECOGNITION_NOT_CONFIGURED: '识别记录服务尚未就绪。',
   WORKER_UNAVAILABLE: '识别服务暂时不可用。',
@@ -130,7 +159,21 @@ export async function submitRecognition(file: File, roi?: number[]): Promise<Rec
     )
   ).json()
 }
+export async function submitDetection(file: File): Promise<DetectionTask> {
+  const body = new FormData()
+  body.append('file', file)
+  return (
+    await request(
+      '/api/landslide/detect',
+      { method: 'POST', body, signal: AbortSignal.timeout(60000) },
+      true,
+    )
+  ).json()
+}
 export async function getRecognition(id: string, signal?: AbortSignal): Promise<RecognitionTask> {
+  return (await request(`/api/recognition/tasks/${encodeURIComponent(id)}`, { signal })).json()
+}
+export async function getDetection(id: string, signal?: AbortSignal): Promise<DetectionTask> {
   return (await request(`/api/recognition/tasks/${encodeURIComponent(id)}`, { signal })).json()
 }
 export async function recognitionImage(id: string, signal?: AbortSignal): Promise<Blob> {
@@ -140,14 +183,26 @@ export async function recognitionImage(id: string, signal?: AbortSignal): Promis
 }
 export async function recognitionHistory(
   page = 1,
-): Promise<{ items: RecognitionTask[]; total: number }> {
+  kind: HistoryKind = 'classify',
+): Promise<{ items: HistoryTask[]; total: number }> {
   if (!apiBase || !savedSession()) return { items: [], total: 0 }
-  return (await request(`/api/recognition/tasks?page=${page}&pageSize=20`)).json()
+  return (
+    await request(`/api/recognition/tasks?kind=${kind}&page=${page}&pageSize=20`)
+  ).json()
 }
 export async function deleteRecognition(id: string) {
   await request(`/api/recognition/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
-export function taskLabel(task: RecognitionTask) {
+export function taskLabel(task: HistoryTask) {
+  if (task.kind === 'detect') {
+    if (task.status === 'completed') {
+      if (!task.result) return '检测完成'
+      return task.result.outcome === 'no_detections'
+        ? '未检出候选 · 待复核'
+        : `检出 ${task.result.candidates.length} 个候选 · 待复核`
+    }
+    return { queued: '排队中', running: '正在检测', failed: '检测未完成' }[task.status]
+  }
   if (task.status === 'completed') {
     if (task.screening) {
       return {

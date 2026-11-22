@@ -20,7 +20,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - run: npm ci && npm run android:sync
+      - name: Build Android web assets with the project API
+        env:
+          VITE_API_BASE_URL: ${{ vars.MARS_ANDROID_API_BASE_URL || 'https://alanspace.cn/mars' }}
+        run: |
+          node -e 'const url = new URL(process.env.VITE_API_BASE_URL); if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) throw new Error("Android API base must be an HTTPS URL without credentials, query, or fragment")'
+          npm ci
+          npm run android:sync
         working-directory: mobile
       - uses: android-actions/setup-android@v4
       - name: Install Android platform

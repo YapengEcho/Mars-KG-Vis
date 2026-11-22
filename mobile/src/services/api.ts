@@ -1,4 +1,5 @@
 import type { Slide } from '../types'
+import { chatEventData } from './chatEvents'
 const configured = import.meta.env.VITE_API_BASE_URL?.trim()
 export const apiBase = configured ? configured.replace(/\/$/, '') : ''
 export interface Capabilities {
@@ -9,7 +10,16 @@ export interface Capabilities {
     historyAvailable?: boolean
     modelVersion?: string
   }
-  detection: { available: boolean; reason?: string }
+  detection: {
+    available: boolean
+    reason?: string
+    modelVersion?: string | null
+    preprocessingVersion?: string | null
+    maxImageSide?: number
+    maxImagePixels?: number
+    maxUploadBytes?: number
+    maxCandidates?: number
+  }
   agent?: { available: boolean; model: string; reason?: string }
 }
 export async function fetchCapabilities(): Promise<Capabilities | null> {
@@ -57,6 +67,30 @@ export interface ChatResponse {
   toolCalls: ToolCallRecord[]
   traceId?: string
   version?: string
+}
+
+export interface ExternalChatContext {
+  reply: ChatResponse | null
+  excerpts: { title: string; text: string }[]
+  citations: Citation[]
+}
+
+export async function fetchExternalChatContext(
+  question: string,
+): Promise<ExternalChatContext | null> {
+  if (!apiBase || question.length > 4000) return null
+  try {
+    const response = await fetch(`${apiBase}/api/agent/context`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(3000),
+    })
+    return response.ok ? await response.json() : null
+  } catch {
+    return null
+  }
 }
 export async function sendChatMessage(
   messages: ChatMessage[],
@@ -124,30 +158,12 @@ export async function streamChatMessage(
     signal: AbortSignal.timeout(90000),
   })
   if (!r.ok || !r.body) throw new Error('助手服务暂时不可用，请稍后重试')
-  const reader = r.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let cut: number
-    while ((cut = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, cut)
-      buffer = buffer.slice(cut + 2)
-      const data = block
-        .split('\n')
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
-        .join('')
-      if (!data) continue
-      const event = JSON.parse(data) as ChatStreamEvent
-      if (event.type === 'delta' && event.content) handlers.onDelta?.(event.content)
-      else if (event.type === 'status' && event.tool)
-        handlers.onTool?.(event.tool, event.ok ?? false)
-      else if ((event.type === 'done' || event.type === 'error') && event.response) {
-        handlers.onDone?.(event.response)
-      }
+  for await (const data of chatEventData(r.body)) {
+    const event = JSON.parse(data) as ChatStreamEvent
+    if (event.type === 'delta' && event.content) handlers.onDelta?.(event.content)
+    else if (event.type === 'status' && event.tool) handlers.onTool?.(event.tool, event.ok ?? false)
+    else if ((event.type === 'done' || event.type === 'error') && event.response) {
+      handlers.onDone?.(event.response)
     }
   }
 }

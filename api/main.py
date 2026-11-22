@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 import json
 import os
 from pathlib import Path
+from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -26,8 +27,8 @@ from api.image_policy import MAX_UPLOAD_BYTES
 from api.agent import llm
 from api.agent.records import TraceRecorder
 from api.agent.retrieval import KeywordRetriever, load_docs
-from api.agent.schemas import ChatRequest, ChatResponse
-from api.agent.service import iter_agent_events, run_agent
+from api.agent.schemas import ChatRequest, ChatResponse, ExternalChatContext, ExternalContextRequest
+from api.agent.service import external_chat_context, iter_agent_events, run_agent
 from api.schemas import (
     AgentCapability,
     Capabilities,
@@ -54,13 +55,17 @@ AGENT_TASK_ERRORS = {
 }
 
 
-def build_retriever() -> KeywordRetriever:
-    docs_path = os.environ.get("MARS_DOCS_PATH")
-    if docs_path:
-        return KeywordRetriever(load_docs(docs_path))
+def build_public_retriever() -> KeywordRetriever:
     if DEFAULT_DOCS.exists():
         return KeywordRetriever(load_docs(DEFAULT_DOCS))
     return KeywordRetriever([])
+
+
+def build_retriever(public_retriever: KeywordRetriever | None = None) -> KeywordRetriever:
+    docs_path = os.environ.get("MARS_DOCS_PATH")
+    if docs_path:
+        return KeywordRetriever(load_docs(docs_path))
+    return public_retriever if public_retriever is not None else build_public_retriever()
 
 
 def load_catalog(path: Path) -> Catalog:
@@ -96,7 +101,9 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
             application.state.catalog = load_catalog(selected_path)
         else:
             application.state.catalog = load_public_catalog()
-        application.state.retriever = build_retriever()
+        public_retriever = build_public_retriever()
+        application.state.public_retriever = public_retriever
+        application.state.retriever = build_retriever(public_retriever)
         application.state.tracer = TraceRecorder()
         application.state.content_database = Path(selected_database).resolve() if selected_database else None
         configured_root = asset_root or os.environ.get('MARS_ASSET_ROOT')
@@ -188,9 +195,33 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
             status="ok", service="mars-api", dataMode=catalog.mode, version=catalog.version
         )
 
-    @application.get("/api/catalog", response_model=Catalog)
-    def complete_catalog(request: Request):
-        return get_catalog(request)
+    @application.get(
+        "/api/catalog",
+        response_model=Catalog,
+        responses={
+            200: {"content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}},
+            409: {"description": "The requested catalogue version has changed."},
+        },
+    )
+    def complete_catalog(
+        request: Request,
+        chart: Literal["types", "latitude"] | None = None,
+        type: SlideType | None = None,
+        version: str | None = None,
+    ):
+        catalog = get_catalog(request)
+        if chart is None:
+            return catalog
+
+        from api.catalog_charts import render_catalog_chart
+
+        if version is not None and catalog.version != version:
+            raise HTTPException(status_code=409, detail="The requested catalogue version has changed.")
+        return Response(
+            render_catalog_chart(catalog, chart, type),
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=300"},
+        )
 
     @application.get("/api/landslides", response_model=SlidePage)
     def list_landslides(
@@ -278,6 +309,17 @@ def create_app(catalog_path: str | Path | None = None, *, database_path: str | P
                 model=llm.model_name(),
                 reason=None if agent_available else LLM_REASON,
             ),
+        )
+
+    @application.post("/api/agent/context", response_model=ExternalChatContext)
+    def agent_context(payload: ExternalContextRequest, request: Request, response: Response):
+        """Provide public context to the browser without calling a language model."""
+        response.headers["Cache-Control"] = "no-store"
+        return external_chat_context(
+            payload.question,
+            get_catalog(request),
+            request.app.state.public_retriever,
+            request.app.state.tracer,
         )
 
     @application.post("/api/agent/chat", response_model=ChatResponse,

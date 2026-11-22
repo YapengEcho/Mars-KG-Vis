@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight } from '@lucide/vue'
+import { ArrowUpRight, ChevronRight } from '@lucide/vue'
 import { atlasContent, casesOfType, caseTitle } from '../lib/atlas'
 import { slideTypes, typeInfo } from '../types'
 
@@ -12,10 +12,15 @@ const groups = slideTypes.map((type) => ({
 
 <template>
   <section class="content-view curated-atlas">
-    <div class="page-heading">
-      <h1>滑坡图鉴</h1>
-      <p>{{ atlasContent.cases.length }} 个案例，覆盖四种滑坡类型</p>
-    </div>
+    <header class="atlas-heading">
+      <div>
+        <h1>滑坡图鉴</h1>
+        <p>{{ atlasContent.cases.length }} 个案例，覆盖四种滑坡类型</p>
+      </div>
+      <RouterLink class="atlas-compare-link" to="/atlas/compare">
+        类型对比 <ArrowUpRight :size="16" aria-hidden="true" />
+      </RouterLink>
+    </header>
 
     <div id="samples" class="case-groups">
       <section
@@ -52,20 +57,61 @@ const groups = slideTypes.map((type) => ({
   width: min(100%, 1032px);
 }
 
+.atlas-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-md);
+  margin-block-end: var(--space-lg);
+}
+
+.atlas-heading h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+  font-weight: 650;
+  line-height: 1.18;
+}
+
+.atlas-heading p {
+  margin: var(--space-2xs) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.atlas-compare-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-sm);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, var(--line));
+  border-radius: 8px;
+  background: var(--selected-bg);
+  color: var(--accent-hover);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.atlas-compare-link:hover {
+  border-color: var(--accent);
+}
+
 .case-groups {
   display: grid;
-  gap: var(--space-lg);
+  gap: clamp(14px, 2.8vw, 24px);
   scroll-margin-top: 16px;
 }
 
 .case-group {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: 12px;
   background: var(--surface);
 }
 
 .case-group > h2 {
+  max-width: none;
   margin: 0;
   border-block-end: 1px solid var(--line);
   color: var(--case-type-color);
@@ -79,6 +125,8 @@ const groups = slideTypes.map((type) => ({
   gap: var(--space-xs);
   min-height: 50px;
   padding: var(--space-xs) var(--space-md);
+  border-start-start-radius: 11px;
+  border-start-end-radius: 11px;
 }
 
 .case-guide-link:hover {
@@ -123,6 +171,11 @@ const groups = slideTypes.map((type) => ({
 .atlas-case-list a:hover,
 .atlas-case-list a:focus-visible {
   background: var(--surface-raised);
+}
+
+.atlas-case-list li:last-child a {
+  border-end-start-radius: 11px;
+  border-end-end-radius: 11px;
 }
 
 .atlas-case-list a:focus-visible {

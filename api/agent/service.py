@@ -16,7 +16,8 @@ import re
 from unicodedata import normalize
 from api.agent import llm, prompts
 from api.agent.records import TraceRecorder
-from api.agent.schemas import ChatResponse, Citation, ToolCallRecord
+from api.agent.retrieval import KeywordRetriever
+from api.agent.schemas import ChatResponse, Citation, ExternalChatContext, PublicGuidebookExcerpt, ToolCallRecord
 from api.agent.tools import TOOL_SPECS, execute_tool
 from api.agent.recognition import task_lookup_events
 from api.recognition_access import RecognitionTaskContext
@@ -80,10 +81,12 @@ def _classification_reply(question: str, retriever, trace_id: str, version: str)
     return ChatResponse(status="ok", answer=answer, citations=citations, traceId=trace_id, version=version)
 
 
-def _catalog_short_reply(message: str, catalog: Catalog, retriever, trace_id: str) -> ChatResponse | None:
+def _catalog_short_reply(
+    message: str, catalog: Catalog, retriever, trace_id: str, *, reply_to_greetings: bool = True
+) -> ChatResponse | None:
     """Answer greetings and routine catalogue questions without a model round trip."""
     question = normalize("NFKC", message).strip().rstrip("。?!").strip()
-    if question.lower() in {"你好", "您好", "嗨", "哈喽", "hi", "hello"}:
+    if reply_to_greetings and question.lower() in {"你好", "您好", "嗨", "哈喽", "hi", "hello"}:
         return ChatResponse(
             status="ok", answer="你好！想查哪个滑坡编号，或看看目录统计？",
             traceId=trace_id, version=catalog.version,
@@ -160,6 +163,25 @@ def _catalog_short_reply(message: str, catalog: Catalog, retriever, trace_id: st
     )
 
 
+def external_chat_context(
+    question: str, catalog: Catalog, public_retriever: KeywordRetriever, tracer: TraceRecorder
+) -> ExternalChatContext:
+    """Resolve local queries and give browser models public guidebook excerpts."""
+    reply = _catalog_short_reply(
+        question, catalog, public_retriever, tracer.new_id(), reply_to_greetings=False
+    )
+    if reply is not None:
+        return ExternalChatContext(reply=reply)
+    result = execute_tool("search_docs", {"q": question, "limit": 3}, catalog, public_retriever)
+    return ExternalChatContext(
+        excerpts=[
+            PublicGuidebookExcerpt(title=doc["title"], text=doc["text"][:1000])
+            for doc in result.payload.get("results", [])
+        ],
+        citations=result.citations,
+    )
+
+
 def iter_agent_events(
     request,
     catalog,
@@ -195,6 +217,7 @@ def iter_agent_events(
         }
         return
     client = llm.get_client()
+    tool_call_options = llm.tool_call_options()
     messages = [{"role": "system", "content": prompts.SYSTEM_PROMPT}]
     messages.extend(message.model_dump() for message in request.messages)
     records_map: dict = {}
@@ -222,6 +245,7 @@ def iter_agent_events(
                 tools=TOOL_SPECS,
                 tool_choice="auto",
                 stream=True,
+                **tool_call_options,
             )
             content_parts: list[str] = []
             pending_calls: dict[int, dict] = {}

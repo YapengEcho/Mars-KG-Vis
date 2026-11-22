@@ -1,9 +1,38 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
+import { apiBase } from '../services/api'
 import { atlas, byType } from '../stores/atlas'
 import { slideTypes, typeInfo, type SlideType } from '../types'
 
 const type = ref<SlideType | ''>('')
+type ChartKind = 'types' | 'latitude'
+const loadedPlots = reactive({ types: '', latitude: '' })
+const serverPlots = computed(() => {
+  if (
+    !apiBase ||
+    import.meta.env.VITE_CATALOG_URL?.trim() ||
+    atlas.state.loading ||
+    atlas.state.error
+  )
+    return { types: '', latitude: '' }
+  const query = new URLSearchParams({ version: atlas.state.catalog.version })
+  if (type.value) query.set('type', type.value)
+  const base = `${apiBase}/api/catalog`
+  return {
+    types: `${base}?chart=types&${query}`,
+    latitude: `${base}?chart=latitude&${query}`,
+  }
+})
+
+function plotIsReady(kind: ChartKind) {
+  return Boolean(serverPlots.value[kind]) && loadedPlots[kind] === serverPlots.value[kind]
+}
+
+function setPlotLoaded(kind: ChartKind, event: Event, loaded: boolean) {
+  const source = (event.currentTarget as HTMLImageElement).getAttribute('src')
+  if (source === serverPlots.value[kind]) loadedPlots[kind] = loaded ? source : ''
+}
+
 const records = computed(() => atlas.state.catalog.records)
 const typeCounts = computed(() => byType(records.value))
 const current = computed(() =>
@@ -31,6 +60,14 @@ const scopedAreas = computed(() =>
 )
 const totalArea = computed(() => scopedAreas.value.reduce((sum, area) => sum + area, 0))
 const countFormat = new Intl.NumberFormat('zh-CN')
+const latitudeDescription = computed(() =>
+  latitudeBands
+    .map(
+      ([start, end], index) =>
+        `${start} 至 ${end} ${countFormat.format(latitudeCounts.value[index] ?? 0)} 条`,
+    )
+    .join('，'),
+)
 const areaFormat = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 })
 const scope = computed(() => {
   const { mode, version } = atlas.state.catalog
@@ -120,7 +157,21 @@ function selectSector(event: MouseEvent) {
             :class="{ interactive: records.length }"
             @click="selectSector"
           >
-            <div class="donut-ring" :style="{ background: donutFill }"></div>
+            <img
+              v-if="serverPlots.types"
+              v-show="plotIsReady('types')"
+              :key="serverPlots.types"
+              class="donut-image"
+              :src="serverPlots.types"
+              alt=""
+              @load="setPlotLoaded('types', $event, true)"
+              @error="setPlotLoaded('types', $event, false)"
+            />
+            <div
+              v-if="!plotIsReady('types')"
+              class="donut-ring"
+              :style="{ background: donutFill }"
+            ></div>
             <div class="donut-label">
               <strong>{{
                 type ? typeShare(type).toFixed(1) + '%' : countFormat.format(records.length)
@@ -160,7 +211,17 @@ function selectSector(event: MouseEvent) {
           <h2 id="latitude-chart-heading">纬度分布</h2>
           <span class="latitude-scope">{{ type ? typeInfo[type].name : '全部类型' }}</span>
         </div>
-        <div class="latitude-chart">
+        <img
+          v-if="serverPlots.latitude"
+          v-show="plotIsReady('latitude')"
+          :key="serverPlots.latitude"
+          class="latitude-image"
+          :src="serverPlots.latitude"
+          :alt="`滑坡纬度分布。 ${latitudeDescription}`"
+          @load="setPlotLoaded('latitude', $event, true)"
+          @error="setPlotLoaded('latitude', $event, false)"
+        />
+        <div v-if="!plotIsReady('latitude')" class="latitude-chart">
           <div class="latitude-axis" aria-hidden="true">
             <span v-for="tick in tickIndexes" :key="tick">
               {{ countFormat.format(tick * latitudeStep) }}
@@ -298,6 +359,12 @@ function selectSector(event: MouseEvent) {
   border-radius: 50%;
   mask: radial-gradient(circle closest-side, transparent 66%, #000 67% 99%, transparent 100%);
 }
+.donut-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
 .donut-label {
   pointer-events: none;
   display: grid;
@@ -382,6 +449,12 @@ function selectSector(event: MouseEvent) {
   column-gap: 9px;
   row-gap: 8px;
   margin-top: 34px;
+}
+.latitude-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 16px;
 }
 .latitude-axis,
 .latitude-grid {
