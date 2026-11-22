@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { LoaderCircle, MapPin, ScanLine, Send, Sparkles } from '@lucide/vue'
 import AssistantMarkdown from '../components/AssistantMarkdown.vue'
 import ChatModelSettings from '../components/ChatModelSettings.vue'
@@ -9,6 +9,8 @@ import { isChatWebLink } from '../lib/chatMarkdown'
 import { fetchCapabilities } from '../services/api'
 import type { AgentAction } from '../services/api'
 import { chat } from '../stores/chat'
+import type { ChatEntry } from '../stores/chat'
+const route = useRoute()
 const router = useRouter()
 const draft = ref('')
 const agentReady = ref<boolean | null>(null)
@@ -17,7 +19,23 @@ const thread = computed(() => chat.state.thread)
 const busy = computed(() => chat.state.busy)
 const error = computed(() => chat.state.error)
 const modelStatus = computed(() => chat.state.model?.model ?? statusText())
+// 识别/检测记录页通过 ?task=&mode= 把选中的任务交给助手。
+const selectedTaskId = ref('')
+const selectedTaskMode = ref<'classify' | 'detect' | ''>('')
+function syncTaskFromQuery() {
+  const task = typeof route.query.task === 'string' ? route.query.task : ''
+  const valid = /^[a-f0-9]{32}$/.test(task)
+  selectedTaskId.value = valid ? task : ''
+  selectedTaskMode.value = valid ? (route.query.mode === 'detect' ? 'detect' : 'classify') : ''
+}
+function clearTask() {
+  selectedTaskId.value = ''
+  selectedTaskMode.value = ''
+  router.replace({ path: '/chat' })
+}
+watch(() => [route.query.task, route.query.mode], syncTaskFromQuery)
 onMounted(async () => {
+  syncTaskFromQuery()
   await scrollToEnd()
   try {
     const capabilities = await fetchCapabilities()
@@ -36,7 +54,7 @@ async function send() {
   if (!text || chat.state.busy) return
   draft.value = ''
   await scrollToEnd()
-  await chat.send(text)
+  await chat.send(text, selectedTaskId.value || undefined)
   await scrollToEnd()
 }
 function resetThread() {
@@ -45,13 +63,17 @@ function resetThread() {
   draft.value = ''
   scrollToEnd()
 }
-function runAction(action: AgentAction) {
+function runAction(action: AgentAction, message?: ChatEntry) {
   if (action.type === 'locate' && action.slideId) {
     router.push({ path: '/', query: { focus: action.slideId } })
   } else if (action.type === 'open_recognize') {
     router.push('/recognize')
   } else if (action.type === 'open_task' && action.taskId) {
-    router.push({ path: '/recognize', query: { task: action.taskId } })
+    const taskKind = message?.taskKind ?? selectedTaskMode.value
+    router.push({
+      path: '/recognize',
+      query: { task: action.taskId, ...(taskKind === 'detect' ? { mode: 'detect' } : {}) },
+    })
   }
 }
 function statusText() {
@@ -101,7 +123,7 @@ function statusText() {
             v-for="(action, actionIndex) in message.actions"
             :key="actionIndex"
             class="action-chip"
-            @click="runAction(action)"
+            @click="runAction(action, message)"
           >
             <MapPin v-if="action.type === 'locate'" :size="14" />
             <ScanLine v-else :size="14" />
@@ -123,6 +145,16 @@ function statusText() {
       </div>
     </div>
     <p v-if="error" class="chat-error" role="alert">{{ error }}</p>
+    <div v-if="selectedTaskId" class="task-chip">
+      <ScanLine :size="13" />
+      <span>
+        正在解释选中的{{ selectedTaskMode === 'detect' ? '检测' : '识别' }}记录 ·
+        {{ selectedTaskId.slice(0, 8) }}
+      </span>
+      <button type="button" class="task-chip-clear" :disabled="busy" @click="clearTask">
+        取消
+      </button>
+    </div>
     <form class="chat-input" @submit.prevent="send">
       <input
         v-model="draft"
@@ -266,6 +298,37 @@ function statusText() {
   font-size: 12px;
   color: #e8a99f;
   margin: 0 0 8px;
+}
+.task-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--muted);
+}
+.task-chip span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-chip-clear {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.task-chip-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .chat-input {
   display: flex;

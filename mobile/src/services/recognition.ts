@@ -100,6 +100,16 @@ function savedSession(): Session | null {
 export function resetRecognitionSession() {
   sessionStorage.removeItem(sessionKey)
 }
+/**
+ * Device credential for a chat request that explains a selected task.
+ *
+ * Reuses an existing session only:聊天本身不应该新建设备身份，否则会在用户
+ * 没有上传图片时凭空产生一条会话记录。
+ */
+export async function recognitionAuthHeaders(): Promise<Record<string, string> | null> {
+  const auth = await session(false)
+  return auth ? { Authorization: `Bearer ${auth.token}` } : null
+}
 async function check(response: Response): Promise<Response> {
   if (response.ok) return response
   const body = await response.json().catch(() => null)

@@ -182,7 +182,11 @@ onBeforeUnmount(() => {
       <DetectionResult v-if="taskId" :key="taskId" :task-id="taskId" />
       <DetectionWorkspace v-else />
       <div v-if="taskId" class="sample-actions">
-        <RouterLink :to="{ path: '/recognize', query: { mode: 'detect' } }" class="primary-button"
+        <RouterLink
+          :to="{ path: '/chat', query: { task: taskId, mode: 'detect' } }"
+          class="primary-button"
+          >问助手</RouterLink
+        ><RouterLink :to="{ path: '/recognize', query: { mode: 'detect' } }" class="secondary-button"
           >检测另一张</RouterLink
         ><RouterLink to="/mine" class="secondary-button">查看历史记录</RouterLink>
       </div>
@@ -194,7 +198,9 @@ onBeforeUnmount(() => {
       <template v-if="taskId">
       <RecognitionResult :key="taskId" :task-id="taskId" :sample-id="resultSampleId" />
       <div class="sample-actions">
-        <RouterLink to="/recognize" class="primary-button">识别另一张</RouterLink
+        <RouterLink :to="{ path: '/chat', query: { task: taskId } }" class="primary-button"
+          >问助手</RouterLink
+        ><RouterLink to="/recognize" class="secondary-button">识别另一张</RouterLink
         ><RouterLink to="/mine" class="secondary-button">查看历史记录</RouterLink>
       </div>
     </template>
