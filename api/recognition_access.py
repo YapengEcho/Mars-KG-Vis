@@ -85,6 +85,30 @@ class ResultSummary(BaseModel):
         return self
 
 
+class DetectionCandidate(BaseModel):
+    """One candidate box plus its four-class classification."""
+    model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
+    candidateId: str
+    box: tuple[int, int, int, int]
+    detectionScore: Score
+    classification: ResultSummary
+
+
+class DetectionResult(BaseModel):
+    model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
+    outcome: Literal['detections', 'no_detections']
+    coordinateSpace: Literal['image_pixels']
+    truncated: bool
+    candidates: list[DetectionCandidate]
+
+    @model_validator(mode='after')
+    def outcome_matches_candidates(self):
+        # 无候选时 outcome 必须是 no_detections，有候选时必须是 detections。
+        if (self.outcome == 'detections') != bool(self.candidates):
+            raise ValueError('Detection outcome and candidates are inconsistent.')
+        return self
+
+
 class ScreeningSummary(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True, hide_input_in_errors=True)
     decision: Literal['possible_landslide', 'no_landslide', 'unsupported_image', 'inconclusive']
@@ -120,6 +144,27 @@ class TaskSummary(BaseModel):
         return self
 
 
+class DetectTaskSummary(BaseModel):
+    """Allowlist for detection tasks: no image, no input geometry, no model digests."""
+    model_config = ConfigDict(extra='ignore', frozen=True, hide_input_in_errors=True)
+    taskId: TaskId
+    kind: Literal['detect']
+    status: Literal['queued', 'running', 'completed', 'failed']
+    createdAt: str
+    finishedAt: str | None
+    modelVersion: str
+    preprocessingVersion: str
+    errorCode: str | None
+    result: DetectionResult | None
+
+    @model_validator(mode='after')
+    def consistent_result(self):
+        # 检测任务的 result 只在 completed 时存在，未检出也是有 result 的 completed。
+        if (self.status == 'completed') != (self.result is not None):
+            raise ValueError('Task state and result are inconsistent.')
+        return self
+
+
 class RecognitionTaskContext:
     __slots__ = ('__store', '__identity', '__task_id')
 
@@ -136,16 +181,14 @@ class RecognitionTaskContext:
     def task_id(self) -> str:
         return self.__task_id
 
-    def read(self, task_id: str) -> TaskSummary:
+    def read(self, task_id: str) -> TaskSummary | DetectTaskSummary:
         if not isinstance(task_id, str) or task_id != self.__task_id:
             raise task_not_found()
         # Read afresh: deletion or failure after preflight must not serve a cache.
         task = get_owned_task(self.__store, self.__identity, task_id)
-        if task.get('kind') == 'detect':
-            raise RecognitionAccessError('UNSUPPORTED_TASK_KIND', 422,
-                                         'Agent task lookup supports single-image classification.')
+        model = DetectTaskSummary if task.get('kind') == 'detect' else TaskSummary
         try:
-            return TaskSummary.model_validate(task)
+            return model.model_validate(task)
         except ValidationError:
             raise unavailable() from None
 

@@ -63,6 +63,37 @@ def record(client, token, state='completed', scores=None, *, screening=None):
     return task_id
 
 
+def detection_candidate(index=1, scores=None):
+    return {
+        'candidateId': str(index),
+        'box': [4, 6, 20, 18],
+        'detectionScore': .71,
+        'classification': classification_result(
+            scores or SCORES, SimpleNamespace(version='synthetic-test-v1', asset_digest='0' * 64)),
+    }
+
+
+def detection_record(client, token, *, candidates=None, error=None):
+    """Create a synthetic detection task (kind=detect) owned by ``token``."""
+    store = client.app.state.recognition.store
+    owner = store.authenticate(token)
+    task_id = store.enqueue_detection(owner, prepare_image(Image.new('RGB', (32, 24))),
+                                      'synthetic-detector-v1')
+    with store.connect() as db:
+        db.execute("UPDATE recognition_jobs SET status='running' WHERE id=?", (task_id,))
+    if error:
+        store.finish(task_id, error=error)
+    else:
+        items = candidates or []
+        store.finish(task_id, result={
+            'outcome': 'detections' if items else 'no_detections',
+            'coordinateSpace': 'image_pixels',
+            'truncated': False,
+            'candidates': items,
+        })
+    return task_id
+
+
 def payload(task_id=None, **extra):
     data = {'messages': [{'role': 'user', 'content': '解释这条记录'}], **extra}
     if task_id is not None:
@@ -333,3 +364,93 @@ def test_openapi_explains_conditional_auth_and_safe_summary():
     assert 'recognitionTaskId' in request['properties'] and request['additionalProperties'] is False
     assert 'recognitionTask' in schema['components']['schemas']['ChatResponse']['properties']
     assert 'modelDigest' not in schema['components']['schemas']['ResultSummary']['properties']
+
+
+@pytest.mark.parametrize('endpoint', ENDPOINTS)
+def test_detection_task_lists_candidates_and_keeps_review_required(client, endpoint):
+    """检测任务：列出候选框，且不把候选说成已确认的类型。"""
+    token = device(client)
+    task_id = detection_record(client, token, candidates=[detection_candidate(1), detection_candidate(2)])
+    data = final_response(client.post(endpoint, headers=headers(token), json=payload(task_id)), endpoint)
+
+    assert data['status'] == 'ok'
+    summary = data['recognitionTask']
+    assert summary['kind'] == 'detect' and summary['status'] == 'completed'
+    # 白名单：不含图片、输入几何、筛选项与任何摘要
+    assert set(summary) == {'taskId', 'kind', 'status', 'createdAt', 'finishedAt',
+                            'modelVersion', 'preprocessingVersion', 'errorCode', 'result'}
+    assert summary['result']['outcome'] == 'detections'
+    assert len(summary['result']['candidates']) == 2
+    assert summary['modelVersion'] == 'synthetic-detector-v1'
+
+    answer = data['answer']
+    assert '2 个候选框' in answer
+    assert '待复核' in answer and '检测分' in answer
+    assert '1' in answer and '2' in answer
+    for claim in ('已确认', '确定是', '一定是'):
+        assert claim not in answer
+    assert data['actions'] == [dict(type='open_task', taskId=task_id, slideId=None)]
+
+    serialized = json.dumps(data) + repr(client.app.state.tracer.list())
+    for private in (token, 'modelDigest', 'candidateBox', 'imageUrl'):
+        assert private not in serialized
+
+
+@pytest.mark.parametrize('endpoint', ENDPOINTS)
+def test_detection_without_candidates_reports_not_detected(client, endpoint):
+    """未检出：明确说没找到候选，不补写类型。"""
+    token = device(client)
+    task_id = detection_record(client, token, candidates=[])
+    data = final_response(client.post(endpoint, headers=headers(token), json=payload(task_id)), endpoint)
+
+    assert data['status'] == 'ok'
+    assert data['recognitionTask']['result']['outcome'] == 'no_detections'
+    assert data['recognitionTask']['result']['candidates'] == []
+    answer = data['answer']
+    assert '未检出' in answer
+    assert '分类为' not in answer
+    assert data['actions'] == [dict(type='open_task', taskId=task_id, slideId=None)]
+
+
+@pytest.mark.parametrize('endpoint', ENDPOINTS)
+def test_detection_failure_reports_error_code_without_candidates(client, endpoint):
+    """失败：给错误码，不给候选，也不编造结果。"""
+    token = device(client)
+    task_id = detection_record(client, token, error='INFERENCE_FAILED')
+    data = final_response(client.post(endpoint, headers=headers(token), json=payload(task_id)), endpoint)
+
+    summary = data['recognitionTask']
+    assert summary['status'] == 'failed'
+    assert summary['result'] is None
+    assert summary['errorCode'] == 'INFERENCE_FAILED'
+    assert '未完成' in data['answer'] and 'INFERENCE_FAILED' in data['answer']
+
+
+def test_detection_task_of_another_device_is_not_found(client):
+    owner = device(client)
+    task_id = detection_record(client, owner, candidates=[detection_candidate()])
+    other = device(client)
+    response = client.post('/api/agent/chat', headers=headers(other), json=payload(task_id))
+    assert response.status_code == 404 and response.json()['detail']['code'] == 'TASK_NOT_FOUND'
+
+
+def test_detection_result_rejects_inconsistent_outcome():
+    """有候选却标未检出（或反之）属于坏数据，不能当成正常结果返回。"""
+    from pydantic import ValidationError
+
+    from api.recognition_access import DetectionResult
+
+    with pytest.raises(ValidationError):
+        DetectionResult.model_validate({
+            'outcome': 'no_detections',
+            'coordinateSpace': 'image_pixels',
+            'truncated': False,
+            'candidates': [detection_candidate()],
+        })
+    with pytest.raises(ValidationError):
+        DetectionResult.model_validate({
+            'outcome': 'detections',
+            'coordinateSpace': 'image_pixels',
+            'truncated': False,
+            'candidates': [],
+        })
