@@ -10,7 +10,16 @@ export interface Capabilities {
     historyAvailable?: boolean
     modelVersion?: string
   }
-  detection: { available: boolean; reason?: string }
+  detection: {
+    available: boolean
+    reason?: string
+    modelVersion?: string | null
+    preprocessingVersion?: string | null
+    maxImageSide?: number
+    maxImagePixels?: number
+    maxUploadBytes?: number
+    maxCandidates?: number
+  }
   agent?: { available: boolean; model: string; reason?: string }
 }
 export async function fetchCapabilities(): Promise<Capabilities | null> {

@@ -20,9 +20,11 @@ import {
   taskLabel,
   resetRecognitionSession,
   RecognitionError,
-  type RecognitionTask,
+  type HistoryKind,
+  type HistoryTask,
 } from '../services/recognition'
-const tasks = ref<RecognitionTask[]>([])
+const tasks = ref<HistoryTask[]>([])
+const kind = ref<HistoryKind>('classify')
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
@@ -32,22 +34,27 @@ const deleting = ref('')
 const service = ref<'checking' | 'connected' | 'offline'>(apiBase ? 'checking' : 'offline')
 const serviceLabel = { checking: '检查中', connected: '已连接', offline: '未连接' }
 
+let loadId = 0
 async function load(more = false) {
   if (loading.value) return
+  const request = ++loadId
+  const requestedKind = kind.value
   loading.value = true
   error.value = ''
   expired.value = false
   try {
     const next = more ? page.value + 1 : 1
-    const result = await recognitionHistory(next)
+    const result = await recognitionHistory(next, requestedKind)
+    if (request !== loadId) return
     tasks.value = more ? [...tasks.value, ...result.items] : result.items
     total.value = result.total
     page.value = next
   } catch (e) {
+    if (request !== loadId) return
     error.value = e instanceof Error ? e.message : '读取记录失败。'
     expired.value = e instanceof RecognitionError && e.code === 'AUTH_REQUIRED'
   } finally {
-    loading.value = false
+    if (request === loadId) loading.value = false
   }
 }
 async function remove(id: string) {
@@ -75,6 +82,18 @@ function resetSession() {
   page.value = 1
   error.value = ''
   expired.value = false
+}
+function switchKind(next: HistoryKind) {
+  if (kind.value === next) return
+  kind.value = next
+  loadId += 1
+  loading.value = false
+  tasks.value = []
+  total.value = 0
+  page.value = 1
+  error.value = ''
+  expired.value = false
+  void load()
 }
 onMounted(async () => {
   void load()
@@ -112,6 +131,26 @@ onMounted(async () => {
             <RefreshCw :size="15" aria-hidden="true" />刷新
           </button>
         </header>
+        <div class="mine-kind-tabs" role="tablist" aria-label="记录类型">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="kind === 'classify'"
+            :class="{ active: kind === 'classify' }"
+            @click="switchKind('classify')"
+          >
+            单图分类
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="kind === 'detect'"
+            :class="{ active: kind === 'detect' }"
+            @click="switchKind('detect')"
+          >
+            裁图检测
+          </button>
+        </div>
 
         <div v-if="error" class="mine-message">
           <p role="alert">{{ error }}</p>
@@ -122,7 +161,11 @@ onMounted(async () => {
         <ul v-if="tasks.length" class="mine-list" :aria-busy="loading">
           <li v-for="task in tasks" :key="task.taskId" class="mine-history-row">
             <RouterLink
-              :to="{ path: '/recognize', query: { task: task.taskId } }"
+              :to="
+                task.kind === 'detect'
+                  ? { path: '/recognize', query: { mode: 'detect', task: task.taskId } }
+                  : { path: '/recognize', query: { task: task.taskId } }
+              "
               class="mine-history-link"
             >
               <div class="mine-history-copy">
@@ -130,6 +173,7 @@ onMounted(async () => {
                   <strong>{{ taskLabel(task) }}</strong>
                   <span
                     v-if="
+                      task.kind === 'classify' &&
                       task.status === 'completed' &&
                       task.screening?.decision === 'possible_landslide' &&
                       task.result
@@ -168,10 +212,20 @@ onMounted(async () => {
         </div>
         <p v-if="loading && !tasks.length" class="mine-message" role="status">正在读取识别记录…</p>
         <div v-else-if="!tasks.length && !error" class="mine-empty">
-          <h3>{{ apiBase ? '还没有识别记录' : '识别记录服务未配置' }}</h3>
-          <p v-if="apiBase">上传 CTX 裁片后，可在这里查看结果。</p>
-          <RouterLink to="/recognize" class="mine-entry">
-            前往识别 <ArrowRight :size="16" aria-hidden="true" />
+          <h3>{{ apiBase ? (kind === 'detect' ? '还没有检测记录' : '还没有识别记录') : '识别记录服务未配置' }}</h3>
+          <p v-if="apiBase">
+            {{
+              kind === 'detect'
+                ? '上传整幅 CTX 裁图后，可在这里查看候选框结果。'
+                : '上传 CTX 裁片后，可在这里查看结果。'
+            }}
+          </p>
+          <RouterLink
+            :to="kind === 'detect' ? { path: '/recognize', query: { mode: 'detect' } } : '/recognize'"
+            class="mine-entry"
+          >
+            {{ kind === 'detect' ? '前往检测' : '前往识别' }}
+            <ArrowRight :size="16" aria-hidden="true" />
           </RouterLink>
         </div>
       </section>
@@ -229,6 +283,28 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.mine-kind-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0 0 var(--space-sm);
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.mine-kind-tabs button {
+  padding: 0.3em 0.8em;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.mine-kind-tabs button.active {
+  background: color-mix(in srgb, var(--accent-hover) 16%, transparent);
+  color: inherit;
+}
 .mine-view {
   --mine-padding: clamp(14px, 2vw, 22px);
   --mine-gap: clamp(14px, 2.5vw, 24px);

@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ImagePlus, ScanLine, X } from '@lucide/vue'
 import RecognitionResult from '../components/RecognitionResult.vue'
+import DetectionWorkspace from '../components/DetectionWorkspace.vue'
+import DetectionResult from '../components/DetectionResult.vue'
 import { fetchCapabilities } from '../services/api'
 import { submitRecognition } from '../services/recognition'
 import { publicAssetUrl } from '../lib/publicAssets'
@@ -24,6 +26,7 @@ const MAX_IMAGE_SIDE = 8192
 let selection = 0
 let active = true
 const taskId = computed(() => (typeof route.query.task === 'string' ? route.query.task : ''))
+const mode = computed(() => (route.query.mode === 'detect' ? 'detect' : 'classify'))
 const resultSampleId = computed(() => {
   const { recognitionSampleId, recognitionSampleTaskId } = router.options.history.state
   if (taskId.value === recognitionSampleTaskId && typeof recognitionSampleId === 'string')
@@ -135,7 +138,7 @@ async function submit() {
   const sample = sampleById(selectedSampleId.value)
   try {
     const task = await submitRecognition(file.value, sample?.roi)
-    if (active) {
+    if (active && mode.value === 'classify') {
       clear()
       await router.replace({
         path: '/recognize',
@@ -162,12 +165,33 @@ onBeforeUnmount(() => {
   <section class="content-view identify-view">
     <div class="page-heading">
       <h1>滑坡识别</h1>
-      <p>上传裁好的 CTX 影像。先筛查是否含滑坡，再判断类型。</p>
+      <p v-if="mode === 'detect'">
+        上传整幅 CTX 裁图，先检测候选框，再对每个框判断类型。
+      </p>
+      <p v-else>上传裁好的 CTX 影像。先筛查是否含滑坡，再判断类型。</p>
     </div>
-    <div class="service-status" role="status">
-      {{ serviceText }}<button v-if="!available" class="text-button" @click="connect">重试</button>
-    </div>
-    <template v-if="taskId">
+    <nav class="mode-tabs" aria-label="识别方式">
+      <RouterLink to="/recognize" :class="{ active: mode === 'classify' }">单图分类</RouterLink>
+      <RouterLink
+        :to="{ path: '/recognize', query: { mode: 'detect' } }"
+        :class="{ active: mode === 'detect' }"
+        >CTX 裁图检测</RouterLink
+      >
+    </nav>
+    <template v-if="mode === 'detect'">
+      <DetectionResult v-if="taskId" :key="taskId" :task-id="taskId" />
+      <DetectionWorkspace v-else />
+      <div v-if="taskId" class="sample-actions">
+        <RouterLink :to="{ path: '/recognize', query: { mode: 'detect' } }" class="primary-button"
+          >检测另一张</RouterLink
+        ><RouterLink to="/mine" class="secondary-button">查看历史记录</RouterLink>
+      </div>
+    </template>
+    <template v-else>
+      <div class="service-status" role="status">
+        {{ serviceText }}<button v-if="!available" class="text-button" @click="connect">重试</button>
+      </div>
+      <template v-if="taskId">
       <RecognitionResult :key="taskId" :task-id="taskId" :sample-id="resultSampleId" />
       <div class="sample-actions">
         <RouterLink to="/recognize" class="primary-button">识别另一张</RouterLink
@@ -237,5 +261,27 @@ onBeforeUnmount(() => {
         <p>请使用含单一目标的 CTX 裁片。目录样例来自训练数据，仅用于试用。</p>
       </details>
     </template>
+    </template>
   </section>
 </template>
+<style scoped>
+.mode-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-block-end: var(--space-md);
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.mode-tabs a {
+  padding: 0.35em 0.9em;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+.mode-tabs a.active {
+  background: color-mix(in srgb, var(--accent-hover) 16%, transparent);
+  color: var(--text-primary, inherit);
+}
+</style>
