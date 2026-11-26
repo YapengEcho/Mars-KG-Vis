@@ -78,6 +78,8 @@ const messages: Record<string, string> = {
   IMAGE_DIMENSIONS_EXCEEDED: '图片尺寸过大，请先裁出单个滑坡。',
   UNSUPPORTED_IMAGE: '只支持 PNG 或 JPEG 图片。',
   ANIMATED_IMAGE: '请选择单帧图片。',
+  NETWORK_ERROR: '无法连接识别服务，请检查网络后重试。',
+  REQUEST_TIMEOUT: '请求超时，请检查网络后重试。',
 }
 export class RecognitionError extends Error {
   constructor(public code: string) {
@@ -100,6 +102,14 @@ function savedSession(): Session | null {
 export function resetRecognitionSession() {
   sessionStorage.removeItem(sessionKey)
 }
+async function send(input: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init)
+  } catch (error) {
+    const name = (error as { name?: string } | null)?.name
+    throw new RecognitionError(name === 'TimeoutError' ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR')
+  }
+}
 async function check(response: Response): Promise<Response> {
   if (response.ok) return response
   const body = await response.json().catch(() => null)
@@ -114,7 +124,7 @@ async function session(create: boolean): Promise<Session | null> {
   if (!issuing)
     issuing = (async () => {
       const response = await check(
-        await fetch(`${apiBase}/api/recognition/sessions`, {
+        await send(`${apiBase}/api/recognition/sessions`, {
           method: 'POST',
           signal: AbortSignal.timeout(10000),
           cache: 'no-store',
@@ -139,7 +149,7 @@ async function request(path: string, options: RequestInit = {}, create = false):
   const auth = await session(create)
   if (!auth) throw new RecognitionError('AUTH_REQUIRED')
   return check(
-    await fetch(`${apiBase}${path}`, {
+    await send(`${apiBase}${path}`, {
       ...options,
       cache: 'no-store',
       headers: { Authorization: `Bearer ${auth.token}` },
