@@ -212,4 +212,11 @@ describe('device-scoped recognition', () => {
     await expect(submitRecognition(new File(['x'], 'x.png'))).rejects.toThrow('稍后再试')
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
+  it('maps a network failure to a retryable message', async () => {
+    fetcher.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    await expect(submitRecognition(new File(['x'], 'x.png'))).rejects.toThrow(
+      '无法连接识别服务',
+    )
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
 })

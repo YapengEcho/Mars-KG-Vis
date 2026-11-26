@@ -110,7 +110,7 @@ cd android
 ./gradlew assembleDebug
 ```
 
-Windows使用 `gradlew.bat assembleDebug`。输出位于 `app/build/outputs/apk/debug/`。
+Windows使用 `gradlew.bat assembleDebug`。输出位于 `app/build/outputs/apk/debug/`。调试包允许通过 HTTP 连接局域网联调服务；release 构建仍只允许 HTTPS。
 
 也可在 GitHub Actions 中手动运行 `Android debug build`，完成后下载 `mars-atlas-debug` 安装包。CI 默认使用线上项目 API。部署到其他地址时，在仓库的 Actions 变量 `MARS_ANDROID_API_BASE_URL` 设置 HTTPS 服务地址，重新构建后应用。后端的 `MARS_CORS_ORIGINS` 需包含 Android WebView 来源 `https://localhost`，反向代理需将 `OPTIONS` 请求转给 API。
 
